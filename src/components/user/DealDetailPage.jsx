@@ -304,6 +304,17 @@ const DealDetailPage = ({ deal, onBack, t, isSyndication, userProfile, backLabel
               <Badge variant="accent">{deal.stage}</Badge>
               {isSyndication && <Badge variant="primary">{'Syndication'}</Badge>}
             </div>
+            {deal.companyWebsite && (
+              <a
+                href={ensureUrl(deal.companyWebsite)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 mt-3"
+              >
+                <ExternalLink size={14} />
+                Company Website
+              </a>
+            )}
           </div>
         </div>
       </Card>

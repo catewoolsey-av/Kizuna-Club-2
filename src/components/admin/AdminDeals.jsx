@@ -1,10 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { colors } from "../../constants/theme";
-import { Card, Badge, Button, Input, TextArea, Select, Modal, ConfirmModal, Toast } from "../../components/ui";
+import { Card, Badge, Button, Input, TextArea, Select, Modal, ConfirmModal, Toast, EmailPreviewModal } from "../../components/ui";
 import { Briefcase, Star, Plus, Edit, Trash2, Eye, Save, Upload, ExternalLink, X, GripVertical } from "lucide-react";
 
 const SHOW_SYNDICATION_UI = false;
+
+const ensureUrl = (url) => {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `https://${url}`;
+};
 
 const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
   const [tab, setTab] = useState("fund"); // 'fund' or 'syndication'
@@ -14,6 +20,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
   const [showDel, setShowDel] = useState(false);
   const [sel, setSel] = useState(null);
   const [toast, setToast] = useState(null);
+  const [pendingEmail, setPendingEmail] = useState(null);
   const [form, setForm] = useState({
     companyName: "",
     sector: "",
@@ -29,6 +36,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
     yearEstablished: "",
     city: "",
     country: "",
+    companyWebsite: "",
     isFund: true,
     isSyndication: false,
     syndicationStatus: "active",
@@ -64,6 +72,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
       yearEstablished: "",
       city: "",
       country: "",
+      companyWebsite: "",
       isFund: tab === "fund",
       isSyndication: tab === "syndication",
       syndicationStatus: "active",
@@ -478,6 +487,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
         year_established: form.yearEstablished ? parseInt(form.yearEstablished) : null,
         city: form.city || null,
         country: form.country || null,
+        company_website: form.companyWebsite || null,
         logo: null, // Will update after upload
         co_investors: form.coInvestors ? form.coInvestors.split(",").map((i) => i.trim()) : [],
         dd_complete: false,
@@ -541,6 +551,8 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
         yearEstablished: inserted.year_established,
         city: inserted.city,
         country: inserted.country,
+        companyWebsite: inserted.company_website,
+        company_website: inserted.company_website,
         logo: logoPath || inserted.logo,
         co_investors: inserted.co_investors,
         coInvestors: inserted.co_investors,
@@ -570,6 +582,12 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
       }
       
       addLog("dealAdded", `Added deal: ${form.companyName}`);
+      setPendingEmail({
+        type: "deal",
+        title: form.companyName,
+        summary: [form.sector, form.stage, form.description].filter(Boolean).join("\n"),
+        actionUrl: window.location.origin,
+      });
       initialFormRef.current = null;
       setShowAdd(false);
       reset();
@@ -609,6 +627,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
         year_established: form.yearEstablished ? parseInt(form.yearEstablished) : null,
         city: form.city || null,
         country: form.country || null,
+        company_website: form.companyWebsite || null,
         logo: logoPath,
         co_investors: form.coInvestors ? form.coInvestors.split(",").map((i) => i.trim()) : [],
         memo_url: form.memoUrl || null,
@@ -652,6 +671,8 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
         yearEstablished: updates.year_established,
         city: updates.city,
         country: updates.country,
+        companyWebsite: updates.company_website,
+        company_website: updates.company_website,
         logo: logoPath,
         co_investors: updates.co_investors,
         coInvestors: updates.co_investors,
@@ -756,6 +777,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
       yearEstablished: d.yearEstablished || "",
       city: d.city || "",
       country: d.country || "",
+      companyWebsite: d.companyWebsite || d.company_website || "",
       isFund: tab === "fund",
       isSyndication: tab === "syndication",
       syndicationStatus: d.syndicationStatus || "active",
@@ -835,6 +857,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
           yearEstablished: "",
           city: "",
           country: "",
+          companyWebsite: "",
           isFund: tab === "fund",
           isSyndication: tab === "syndication",
           syndicationStatus: "active",
@@ -942,6 +965,18 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
               <p className="text-sm text-gray-600 mb-3 truncate">
                 Co-Investors: {d.coInvestors && d.coInvestors.length > 0 ? d.coInvestors.join(', ') : 'N/A'}
               </p>
+              {d.companyWebsite && (
+                <a
+                  href={ensureUrl(d.companyWebsite)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 mb-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLink size={14} />
+                  Website
+                </a>
+              )}
               <div className="flex gap-2 flex-wrap">
                 <Button variant="outline" size="sm" icon={Eye} onClick={() => onViewDeal(d)}>View</Button>
                 <Button variant="outline" size="sm" icon={Edit} onClick={() => openEdit(d)}>Edit</Button>
@@ -964,7 +999,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
       )}
 
       {/* Add Modal */}
-      <Modal isOpen={showAdd} onClose={() => { setShowAdd(false); reset(); }} title="Add Deal" size="lg">
+      <Modal isOpen={showAdd} onClose={() => { setShowAdd(false); reset(); }} title="Add Deal" size="lg" closeOnBackdrop={false}>
         <div className="space-y-4">
           <Input label="Company Name" value={form.companyName} onChange={(v) => setForm({ ...form, companyName: v })} required placeholder="Company Inc." />
           <div className="grid grid-cols-2 gap-4">
@@ -1065,6 +1100,13 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
               placeholder="USA"
             />
           </div>
+          <Input
+            label="Company Website"
+            value={form.companyWebsite}
+            onChange={(v) => setForm({ ...form, companyWebsite: v })}
+            placeholder="https://company.com"
+            type="url"
+          />
           
           {/* Logo Upload */}
           <div>
@@ -1274,7 +1316,7 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
       </Modal>
 
       {/* Edit Modal */}
-      <Modal isOpen={showEdit} onClose={() => { setShowEdit(false); setSel(null); reset(); }} title="Edit Deal" size="lg">
+      <Modal isOpen={showEdit} onClose={() => { setShowEdit(false); setSel(null); reset(); }} title="Edit Deal" size="lg" closeOnBackdrop={false}>
         <div className="space-y-4">
           <Input label="Company Name" value={form.companyName} onChange={(v) => setForm({ ...form, companyName: v })} required />
           <div className="grid grid-cols-2 gap-4">
@@ -1370,6 +1412,13 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
               placeholder="USA"
             />
           </div>
+          <Input
+            label="Company Website"
+            value={form.companyWebsite}
+            onChange={(v) => setForm({ ...form, companyWebsite: v })}
+            placeholder="https://company.com"
+            type="url"
+          />
           
           {/* Logo Upload */}
           <div>
@@ -1567,6 +1616,12 @@ const AdminDeals = ({ t, data, setData, addLog, onViewDeal }) => {
         confirmText={t.delete}
       />
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      <EmailPreviewModal
+        notification={pendingEmail}
+        onClose={() => setPendingEmail(null)}
+        onSent={() => setToast({ message: "Email notification sent", type: "success" })}
+        onError={(error) => setToast({ message: `Email error: ${error.message}`, type: "error" })}
+      />
     </div>
   );
 };

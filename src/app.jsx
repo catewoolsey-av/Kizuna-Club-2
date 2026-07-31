@@ -31,7 +31,9 @@ import {
   MemberProfileView,
   DealDetailPage,
   BoardView,
-  AnnouncementsView
+  AnnouncementsView,
+  NewsFeedView,
+  DocumentsView
 } from "./components/user";
 
 const titles = {
@@ -47,9 +49,13 @@ const titles = {
   'portfolio': 'Portfolio',
   'community': 'Community',
   'announcements': 'Announcements',
+  'news-feed': 'News Feed',
+  'documents': 'Documents',
   'my-portfolio': 'My Portfolio',
   'profile': 'Profile'
 };
+
+const sharedViews = new Set(['news-feed', 'documents']);
 
 // MAIN APP - With Proper Supabase Authentication
 export default function App() {
@@ -95,6 +101,8 @@ export default function App() {
     archivedDeals: [],
     dinners: [],
     announcements: [],
+    newsFeed: [],
+    documentUpdates: [],
     activityLog: [],
     memberInvestments: [],
     recruits: [],
@@ -413,7 +421,7 @@ export default function App() {
   const handleToggleAdmin = () => setIsAdmin((prev) => !prev);
 
   useEffect(() => {
-    if (isAdmin && !view.startsWith('admin-')) {
+    if (isAdmin && !view.startsWith('admin-') && !sharedViews.has(view)) {
       setView('admin-dashboard');
       return;
     }
@@ -444,7 +452,7 @@ export default function App() {
     try {
       setDataLoading(true);
       
-      const [leadershipRes, membersRes, discussionsRes, fundHoldingsRes, syndicationRes, dinnersRes, announcementsRes, activityRes, recruitsRes, investmentsRes] = await Promise.all([
+      const [leadershipRes, membersRes, discussionsRes, fundHoldingsRes, syndicationRes, dinnersRes, announcementsRes, newsFeedRes, documentUpdatesRes, activityRes, recruitsRes, investmentsRes] = await Promise.all([
         supabase.from('leadership').select('*').order('created_at'),
         supabase.from('members').select('*').order('created_at'),
         supabase.from('discussions').select('*').order('date', { ascending: false }),
@@ -452,6 +460,8 @@ export default function App() {
         supabase.from('syndication_deals').select('*').order('sort_order'),
         supabase.from('dinners').select('*').order('date', { ascending: false }),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }),
+        supabase.from('news_feed').select('*').order('published_at', { ascending: false }).limit(100),
+        supabase.from('document_updates').select('*').order('created_at', { ascending: false }),
         supabase.from('activity_log').select('*').order('timestamp', { ascending: false }),
         supabase.from('recruits').select('*').order('created_at', { ascending: false }),
         supabase.from('member_investments').select('*').order('created_at')
@@ -460,9 +470,11 @@ export default function App() {
       const mapLeadership = (l) => ({ ...l, nameEn: l.name, titleEn: l.title, bioEn: l.bio, coInvestors: l.co_invests_with || [], notableInvestments: l.notable_investments, isManager: l.is_manager });
       const mapMember = (m) => ({ ...m, nameEn: m.name, geography: m.location || '', companyName: m.company, lastLogin: m.last_login, dealsViewed: m.deals_viewed, sessionsAttended: m.sessions_attended });
       const mapDiscussion = (d) => ({ ...d, titleJa: d.title_ja, descriptionJa: d.description_ja, topicJa: d.topic_ja, zoomLink: d.zoom_link, isUpcoming: d.is_upcoming, rsvpYes: d.rsvp_yes || [], rsvpNo: d.rsvp_no || [], notResponded: d.not_responded || [], meetingUrl: d.meeting_url, endDate: d.end_date });
-      const mapDeal = (d) => ({ ...d, companyName: d.name, nameJa: d.name_ja, sectorJa: d.sector_ja, descriptionJa: d.description_ja, coInvestors: d.co_investors || [], ddComplete: d.dd_complete, ddReports: d.dd_reports || [], syndicationStatus: d.syndication_status, sortOrder: d.sort_order, meetingUrl: d.meeting_url, yearEstablished: d.year_established, checkSize: d.check_size, isPreMoney: d.is_pre_money, isApproximate: d.valuation_approximate === true });
+      const mapDeal = (d) => ({ ...d, companyName: d.name, nameJa: d.name_ja, sectorJa: d.sector_ja, descriptionJa: d.description_ja, coInvestors: d.co_investors || [], ddComplete: d.dd_complete, ddReports: d.dd_reports || [], syndicationStatus: d.syndication_status, sortOrder: d.sort_order, meetingUrl: d.meeting_url, yearEstablished: d.year_established, checkSize: d.check_size, isPreMoney: d.is_pre_money, isApproximate: d.valuation_approximate === true, companyWebsite: d.company_website });
       const mapDinner = (d) => ({ ...d, titleJa: d.title_ja, venueJa: d.venue_ja, notAttending: d.not_attending || [], notResponded: d.not_responded || [], attendees: d.attendees || [], isUpcoming: d.is_upcoming, endDate: d.end_date });
       const mapAnnouncement = (a) => ({ ...a, titleJa: a.title_ja, contentJa: a.content_ja, scheduledDate: a.scheduled_date });
+      const mapNewsItem = (n) => ({ ...n, dealId: n.deal_id, dealName: n.deal_name, sourceUrl: n.source_url, sourceName: n.source_name, publishedAt: n.published_at, fetchedAt: n.fetched_at, relevanceNote: n.relevance_note });
+      const mapDocumentUpdate = (d) => ({ ...d, documentUrl: d.document_url, documentName: d.document_name, postedBy: d.posted_by, postedById: d.posted_by_id, createdAt: d.created_at, updatedAt: d.updated_at, isArchived: d.is_archived === true });
       const mapLog = (l) => ({ ...l, detailsJa: l.details_ja, user: l.user_name });
       const mapRecruit = (r) => ({ ...r, avLead: r.av_lead, createdAt: r.created_at });
       const mapInvestment = (i) => ({ ...i, memberId: i.member_id, dealId: i.deal_id, memberName: i.member_name, dealName: i.deal_name });
@@ -475,6 +487,8 @@ export default function App() {
       const syndicationData = (syndicationRes.data || []).map(mapDeal);
       const dinnersData = (dinnersRes.data || []).map(mapDinner);
       const announcementsData = (announcementsRes.data || []).map(mapAnnouncement);
+      const newsFeedData = (newsFeedRes.data || []).map(mapNewsItem);
+      const documentUpdatesData = (documentUpdatesRes.data || []).map(mapDocumentUpdate);
       const activityData = (activityRes.data || []).map(mapLog);
       const recruitsData = (recruitsRes.data || []).map(mapRecruit);
       const investmentsData = (investmentsRes.data || []).map(mapInvestment);
@@ -488,6 +502,8 @@ export default function App() {
         archivedDeals: [],
         dinners: dinnersData,
         announcements: announcementsData,
+        newsFeed: newsFeedData,
+        documentUpdates: documentUpdatesData,
         activityLog: activityData,
         memberInvestments: investmentsData,
         recruits: recruitsData,
@@ -501,6 +517,8 @@ export default function App() {
         syndicationDeals: syndicationData,
         dinners: dinnersData,
         announcements: announcementsData,
+        newsFeed: newsFeedData,
+        documentUpdates: documentUpdatesData,
         memberInvestments: investmentsData,
         recruits: recruitsData,
       }));
@@ -590,6 +608,8 @@ export default function App() {
       case 'portfolio': return <PortfolioView t={t} onViewDeal={handleViewDeal} data={data} />;
       case 'community': return <CommunityView t={t} onViewMember={handleViewMember} data={data} />;
       case 'announcements': return <AnnouncementsView t={t} data={data} />;
+      case 'news-feed': return <NewsFeedView t={t} data={data} />;
+      case 'documents': return <DocumentsView data={data} setData={updateData} userProfile={userProfile} isAdmin={isAdmin} addLog={addLog} />;
       case 'my-portfolio': return <MyPortfolioView t={t} onViewDeal={handleViewDeal} data={data} userProfile={userProfile} />;
       case 'profile': return <ProfileView t={t} userProfile={userProfile} setUserProfile={setUserProfile} setData={updateData} />;
       default: return <Dashboard t={t} onViewMember={handleViewMember} onViewDeal={handleViewDeal} data={data} />;

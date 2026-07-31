@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { colors } from "../../constants/theme";
-import { Card, Badge, Button, Input, TextArea, Modal, ConfirmModal, Toast } from "../../components/ui";
+import { Card, Badge, Button, Input, TextArea, Modal, ConfirmModal, Toast, EmailPreviewModal } from "../../components/ui";
 import { formatDate } from "../../utils/date";
 import { Mail, Megaphone, Trash2, Pin, Upload, Edit } from "lucide-react";
 
@@ -11,6 +11,7 @@ const AdminAnnouncements = ({ t, data, setData, addLog, userProfile }) => {
   const [showDel, setShowDel] = useState(false);
   const [sel, setSel] = useState(null);
   const [toast, setToast] = useState(null);
+  const [pendingEmail, setPendingEmail] = useState(null);
   const [form, setForm] = useState({
     title: "",
     content: "",
@@ -57,6 +58,12 @@ const AdminAnnouncements = ({ t, data, setData, addLog, userProfile }) => {
       }));
 
       addLog("announcementCreated", `Created announcement: ${form.title}`);
+      setPendingEmail({
+        type: "announcement",
+        title: form.title,
+        summary: form.content,
+        actionUrl: window.location.origin,
+      });
       setShowCreate(false);
       reset();
       setToast({ message: "Announcement created", type: "success" });
@@ -333,6 +340,12 @@ const AdminAnnouncements = ({ t, data, setData, addLog, userProfile }) => {
       />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      <EmailPreviewModal
+        notification={pendingEmail}
+        onClose={() => setPendingEmail(null)}
+        onSent={() => setToast({ message: "Email notification sent", type: "success" })}
+        onError={(error) => setToast({ message: `Email error: ${error.message}`, type: "error" })}
+      />
     </div>
   );
 };

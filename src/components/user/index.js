@@ -8,3 +8,5 @@ export { default as MemberProfileView } from './MemberProfileView';
 export { default as DealDetailPage } from './DealDetailPage';
 export { default as BoardView } from './BoardView';
 export { default as AnnouncementsView } from './AnnouncementsView';
+export { default as NewsFeedView } from './NewsFeedView';
+export { default as DocumentsView } from './DocumentsView';

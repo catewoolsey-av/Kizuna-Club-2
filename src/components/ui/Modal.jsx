@@ -2,7 +2,14 @@ import React from "react";
 import { X, AlertTriangle } from "lucide-react";
 import { Button } from "./Button";
 
-export const Modal = ({ isOpen, onClose, title, children, size = "md" }) => {
+export const Modal = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  size = "md",
+  closeOnBackdrop = true,
+}) => {
   if (!isOpen) return null;
 
   const sizes = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl" };
@@ -11,7 +18,11 @@ export const Modal = ({ isOpen, onClose, title, children, size = "md" }) => {
     <div
       className="fixed top-0 left-0 right-0 bottom-0 bg-black/50 flex items-center justify-center p-4"
       style={{ zIndex: 9999 }}
-      onClick={onClose}
+      onClick={(e) => {
+        if (closeOnBackdrop && e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
         className={`bg-white rounded-xl ${sizes[size]} w-full max-h-[90vh] overflow-hidden flex flex-col`}

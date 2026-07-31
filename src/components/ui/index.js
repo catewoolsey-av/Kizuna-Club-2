@@ -6,3 +6,4 @@ export { TextArea } from "./TextArea";
 export { Select } from "./Select";
 export { Modal, ConfirmModal } from "./Modal";
 export { Toast } from "./Toast";
+export { EmailPreviewModal } from "./EmailPreviewModal";

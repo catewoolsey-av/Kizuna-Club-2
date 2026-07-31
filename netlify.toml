@@ -2,6 +2,9 @@
   command = "npm install && npm run build"
   publish = "dist"
 
+[functions."refresh-news-feed"]
+  schedule = "@daily"
+
 [[headers]]
   for = "/*"
   [headers.values]

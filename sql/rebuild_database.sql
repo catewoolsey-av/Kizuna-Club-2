@@ -5,6 +5,8 @@
 
 -- Drop existing tables (in order of dependencies)
 DROP TABLE IF EXISTS activity_log CASCADE;
+DROP TABLE IF EXISTS document_updates CASCADE;
+DROP TABLE IF EXISTS news_feed CASCADE;
 DROP TABLE IF EXISTS member_investments CASCADE;
 DROP TABLE IF EXISTS recruits CASCADE;
 DROP TABLE IF EXISTS announcements CASCADE;
@@ -18,6 +20,31 @@ DROP TABLE IF EXISTS leadership CASCADE;
 -- =====================================================
 -- LEADERSHIP (AV Team)
 -- =====================================================
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('deal-documents', 'deal-documents', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+DROP POLICY IF EXISTS "Allow public read deal documents" ON storage.objects;
+CREATE POLICY "Allow public read deal documents"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'deal-documents');
+
+DROP POLICY IF EXISTS "Allow authenticated upload deal documents" ON storage.objects;
+CREATE POLICY "Allow authenticated upload deal documents"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'deal-documents' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Allow authenticated update deal documents" ON storage.objects;
+CREATE POLICY "Allow authenticated update deal documents"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'deal-documents' AND auth.role() = 'authenticated')
+WITH CHECK (bucket_id = 'deal-documents' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Allow authenticated delete deal documents" ON storage.objects;
+CREATE POLICY "Allow authenticated delete deal documents"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'deal-documents' AND auth.role() = 'authenticated');
+
 CREATE TABLE leadership (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -96,6 +123,7 @@ CREATE TABLE fund_holdings (
   description TEXT,
   description_ja TEXT,
   valuation TEXT,
+  company_website TEXT,
   logo TEXT DEFAULT '🚀',
   co_investors TEXT[],
   dd_complete BOOLEAN DEFAULT false,
@@ -132,6 +160,7 @@ CREATE TABLE syndication_deals (
   description_ja TEXT,
   valuation TEXT,
   check_size TEXT,
+  company_website TEXT,
   logo TEXT DEFAULT '⚡',
   co_investors TEXT[],
   dd_complete BOOLEAN DEFAULT false,
@@ -149,6 +178,29 @@ INSERT INTO syndication_deals (name, sector, stage, description, valuation, chec
   ('TechVision AI', 'Computer Vision', 'Series A', 'AI-powered visual inspection for manufacturing quality control', '$30M', '$50K', '👁️', ARRAY['Bessemer', 'IVP'], 'active'),
   ('CloudSecure', 'Cloud Security', 'Series B', 'Cloud-native security platform with AI threat detection', '$75M', '$100K', '☁️', ARRAY['Insight Partners'], 'active'),
   ('AgriTech Pro', 'AgTech', 'Seed', 'Precision agriculture using satellite imagery and ML', '$12M', '$25K', '🌾', ARRAY['Anterra Capital'], 'active');
+
+-- =====================================================
+-- NEWS FEED (Weekly company news cache)
+-- =====================================================
+CREATE TABLE news_feed (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID REFERENCES fund_holdings(id) ON DELETE CASCADE,
+  deal_name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT,
+  source_url TEXT NOT NULL,
+  source_name TEXT,
+  published_at TIMESTAMPTZ,
+  fetched_at TIMESTAMPTZ DEFAULT NOW(),
+  relevance_note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (deal_id, source_url)
+);
+
+ALTER TABLE news_feed ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all" ON news_feed FOR ALL USING (true) WITH CHECK (true);
+CREATE INDEX idx_news_feed_deal_id ON news_feed(deal_id);
+CREATE INDEX idx_news_feed_published_at ON news_feed(published_at DESC);
 
 -- =====================================================
 -- DISCUSSIONS (Group Discussions)
@@ -233,6 +285,27 @@ CREATE POLICY "Allow all" ON announcements FOR ALL USING (true) WITH CHECK (true
 INSERT INTO announcements (title, title_ja, content, content_ja, author, status, pinned, created_at) VALUES
   ('Welcome to Kizuna Club', '絆クラブへようこそ', 'We are excited to launch the Kizuna Club platform. This is your hub for deal flow, events, and community.', '絆クラブプラットフォームの発足をお喜び申し上げます。ディールフロー、イベント、コミュニティのハブです。', 'Mike Collins', 'published', true, '2025-12-01'),
   ('Q1 2026 Deal Pipeline', '2026年第1四半期ディールパイプライン', 'Our Q1 pipeline includes 3 new syndication opportunities in AI, CleanTech, and FinTech.', 'Q1パイプラインには、AI、クリーンテック、フィンテックの3つの新しいシンジケーション機会が含まれています。', 'Ryan Nakata', 'published', false, '2026-01-05');
+
+-- =====================================================
+-- DOCUMENT UPDATES
+-- =====================================================
+CREATE TABLE document_updates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  body TEXT,
+  document_url TEXT,
+  document_name TEXT,
+  posted_by TEXT,
+  posted_by_id UUID,
+  is_archived BOOLEAN DEFAULT false,
+  updated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE document_updates ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all" ON document_updates FOR ALL USING (true) WITH CHECK (true);
+CREATE INDEX idx_document_updates_created_at ON document_updates(created_at DESC);
+CREATE INDEX idx_document_updates_is_archived ON document_updates(is_archived);
 
 -- =====================================================
 -- RECRUITS (Pipeline)

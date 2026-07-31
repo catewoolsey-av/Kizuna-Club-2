@@ -1,7 +1,7 @@
 // AdminEvents.jsx - Fixed per requirements
 import React, { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import { Card, Badge, Button, Input, TextArea, Select, Modal, ConfirmModal, Toast } from "../../components/ui";
+import { Card, Badge, Button, Input, TextArea, Select, Modal, ConfirmModal, Toast, EmailPreviewModal } from "../../components/ui";
 import { colors } from "../../constants/theme";
 import { formatDate, formatDateRange, getTimeUntil } from "../../utils/date";
 import { Plus, Eye, Trash2, MapPin, Users, Edit, MessageSquare, CheckCircle, Clock, Utensils, User } from "lucide-react";
@@ -18,6 +18,7 @@ const AdminEvents = ({ t, data, setData, addLog }) => {
   const [selDinner, setSelDinner] = useState(null);
   const [selDiscussion, setSelDiscussion] = useState(null);
   const [toast, setToast] = useState(null);
+  const [pendingEmail, setPendingEmail] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Toggle between Active/Past for each admin events section
@@ -158,6 +159,12 @@ const AdminEvents = ({ t, data, setData, addLog }) => {
 
       setData((p) => ({ ...p, discussions: [...p.discussions, mapped] }));
       addLog("discussionAdded", `Added discussion: ${discussionForm.title}`);
+      setPendingEmail({
+        type: "event",
+        title: discussionForm.title,
+        summary: `${discussionForm.date} at ${discussionForm.time} ET${discussionForm.topic ? `\nTopic: ${discussionForm.topic}` : ""}`,
+        actionUrl: window.location.origin,
+      });
       setShowAddDiscussion(false);
       resetDiscussion();
       setToast({ message: "Discussion added", type: "success" });
@@ -264,6 +271,12 @@ const AdminEvents = ({ t, data, setData, addLog }) => {
 
       setData((p) => ({ ...p, dinners: [...p.dinners, mapped] }));
       addLog("eventCreated", `Created event: ${dinnerForm.title}`);
+      setPendingEmail({
+        type: "event",
+        title: dinnerForm.title,
+        summary: `${dinnerForm.date} at ${dinnerForm.time || "18:30"} ET\nVenue: ${dinnerForm.venue}`,
+        actionUrl: window.location.origin,
+      });
       setShowAddDinner(false);
       resetDinner();
       setToast({ message: t.savedSuccessfully, type: "success" });
@@ -798,7 +811,7 @@ const AdminEvents = ({ t, data, setData, addLog }) => {
         )}
       </Modal>
 
-      <Modal isOpen={showAddDiscussion} onClose={() => setShowAddDiscussion(false)} title="Add Discussion" size="lg">
+      <Modal isOpen={showAddDiscussion} onClose={() => setShowAddDiscussion(false)} title="Add Discussion" size="lg" closeOnBackdrop={false}>
         <div className="space-y-4">
           <Input label="Title" value={discussionForm.title} onChange={(v) => setDiscussionForm({ ...discussionForm, title: v })} required />
           <TextArea label="Description" value={discussionForm.description} onChange={(v) => setDiscussionForm({ ...discussionForm, description: v })} />
@@ -820,7 +833,7 @@ const AdminEvents = ({ t, data, setData, addLog }) => {
         </div>
       </Modal>
 
-      <Modal isOpen={showEditDiscussion} onClose={() => { setShowEditDiscussion(false); setSelDiscussion(null); }} title="Edit Discussion" size="lg">
+      <Modal isOpen={showEditDiscussion} onClose={() => { setShowEditDiscussion(false); setSelDiscussion(null); }} title="Edit Discussion" size="lg" closeOnBackdrop={false}>
         <div className="space-y-4">
           <Input label="Title" value={discussionForm.title} onChange={(v) => setDiscussionForm({ ...discussionForm, title: v })} required />
           <TextArea label="Description" value={discussionForm.description} onChange={(v) => setDiscussionForm({ ...discussionForm, description: v })} />
@@ -842,7 +855,7 @@ const AdminEvents = ({ t, data, setData, addLog }) => {
         </div>
       </Modal>
 
-      <Modal isOpen={showAddDinner} onClose={() => setShowAddDinner(false)} title={t.addEvent} size="lg">
+      <Modal isOpen={showAddDinner} onClose={() => setShowAddDinner(false)} title={t.addEvent} size="lg" closeOnBackdrop={false}>
         <div className="space-y-4">
           <Input label={t.title} value={dinnerForm.title} onChange={(v) => setDinnerForm({ ...dinnerForm, title: v })} required />
           <div className="grid grid-cols-2 gap-4">
@@ -861,7 +874,7 @@ const AdminEvents = ({ t, data, setData, addLog }) => {
         </div>
       </Modal>
 
-      <Modal isOpen={showEditDinner} onClose={() => { setShowEditDinner(false); setSelDinner(null); }} title="Edit Event" size="lg">
+      <Modal isOpen={showEditDinner} onClose={() => { setShowEditDinner(false); setSelDinner(null); }} title="Edit Event" size="lg" closeOnBackdrop={false}>
         <div className="space-y-4">
           <Input label={t.title} value={dinnerForm.title} onChange={(v) => setDinnerForm({ ...dinnerForm, title: v })} required />
           <div className="grid grid-cols-2 gap-4">
@@ -883,6 +896,12 @@ const AdminEvents = ({ t, data, setData, addLog }) => {
       <ConfirmModal isOpen={showDelDiscussion} onClose={() => { setShowDelDiscussion(false); setSelDiscussion(null); }} onConfirm={handleDelDiscussion} title={t.delete} message={`${t.confirmDelete} ${selDiscussion?.title}?`} confirmText={loading ? "Deleting..." : t.delete} disabled={loading} />
       <ConfirmModal isOpen={showDelDinner} onClose={() => { setShowDelDinner(false); setSelDinner(null); }} onConfirm={handleDelDinner} title={t.delete} message={`${t.confirmDelete} ${selDinner?.title}?`} confirmText={loading ? "Deleting..." : t.delete} disabled={loading} />
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      <EmailPreviewModal
+        notification={pendingEmail}
+        onClose={() => setPendingEmail(null)}
+        onSent={() => setToast({ message: "Email notification sent", type: "success" })}
+        onError={(error) => setToast({ message: `Email error: ${error.message}`, type: "error" })}
+      />
     </div>
   );
 };

@@ -1,9 +1,15 @@
 import React from 'react';
 import { Card, Badge, Button } from "../../components/ui";
-import { ChevronRight, Briefcase, Star } from 'lucide-react';
+import { ChevronRight, Briefcase, Star, ExternalLink } from 'lucide-react';
 import { supabase } from "../../lib/supabaseClient";
 
 const SHOW_MEMBER_ACTIVE_SYNDICATIONS = false;
+
+const ensureUrl = (url) => {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `https://${url}`;
+};
 
 // Helper to get logo URL from storage
 const getLogoUrl = (logoPath) => {
@@ -91,6 +97,17 @@ const PortfolioView = ({ t, onViewDeal, data }) => {
                   <p className="text-sm text-gray-600 mb-3 truncate">
                     Co-Investors: {h.coInvestors && h.coInvestors.length > 0 ? h.coInvestors.join(', ') : 'N/A'}
                   </p>
+                  {h.companyWebsite && (
+                    <a
+                      href={ensureUrl(h.companyWebsite)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 mb-3"
+                    >
+                      <ExternalLink size={14} />
+                      Website
+                    </a>
+                  )}
                   <Button variant="primary" size="sm" className="w-full" icon={ChevronRight} onClick={() => onViewDeal(h)}>
                     {t.more}
                   </Button>
@@ -155,6 +172,17 @@ const PortfolioView = ({ t, onViewDeal, data }) => {
                   <p className="text-sm text-gray-600 mb-3 truncate">
                     Co-Investors: {h.coInvestors && h.coInvestors.length > 0 ? h.coInvestors.join(', ') : 'N/A'}
                   </p>
+                  {h.companyWebsite && (
+                    <a
+                      href={ensureUrl(h.companyWebsite)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 mb-3"
+                    >
+                      <ExternalLink size={14} />
+                      Website
+                    </a>
+                  )}
                   <Button variant="accent" size="sm" className="w-full" icon={ChevronRight} onClick={() => onViewDeal(h)}>
                     {t.more}
                   </Button>

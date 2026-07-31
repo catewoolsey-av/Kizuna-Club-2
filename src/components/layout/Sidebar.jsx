@@ -10,7 +10,8 @@ import {
   Megaphone,
   History,
   LogOut,
-  Bell,
+  Newspaper,
+  FileText,
 } from "lucide-react";
 import { colors } from "../../constants/theme";
 
@@ -30,6 +31,8 @@ export default function Sidebar({
     { id: "dashboard", label: "Home", icon: Home },
     { id: "events", label: "Events", icon: Calendar },
     { id: "portfolio", label: "Fund Portfolio", icon: Briefcase },
+    { id: "news-feed", label: "News Feed", icon: Newspaper },
+    { id: "documents", label: "Documents", icon: FileText },
     { id: "community", label: "Members", icon: Users },
     { id: "announcements", label: "Announcements", icon: Megaphone },
     { id: "profile", label: "My Profile", icon: Settings },
@@ -39,6 +42,8 @@ export default function Sidebar({
     { id: "admin-dashboard", label: "Dashboard", icon: Home },
     { id: "admin-events", label: "Events", icon: Calendar },
     { id: "admin-deals", label: "Deals", icon: Briefcase },
+    { id: "news-feed", label: "News Feed", icon: Newspaper },
+    { id: "documents", label: "Documents", icon: FileText },
     { id: "admin-members", label: "Members", icon: Users },
     { id: "admin-announcements", label: "Announcements", icon: Megaphone },
     { id: "admin-log", label: "Activity Log", icon: History },
