@@ -48,7 +48,7 @@ const buildHtml = ({ code, fromName }) => `
   </div>
 `;
 
-exports.handler = async (event) => {
+const handle = async (event) => {
   if (event.httpMethod !== "POST") {
     return jsonResponse(405, { error: "Method Not Allowed" });
   }
@@ -129,4 +129,13 @@ exports.handler = async (event) => {
   }
 
   return jsonResponse(200, { success: true, expiresAt });
+};
+
+exports.handler = async (event) => {
+  try {
+    return await handle(event);
+  } catch (error) {
+    console.error("Unhandled SendGrid MFA send error:", error);
+    return jsonResponse(500, { error: error?.message || "SendGrid MFA send failed" });
+  }
 };

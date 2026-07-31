@@ -211,7 +211,7 @@ export default function App() {
         if (pendingMfaNow && !magicLinkCallback && mfaPasswordPhase) {
           console.log('Pending MFA: ignoring password-phase auth state change');
           setProfileLoading(false);
-        } else if (pendingMfaNow && !magicLinkCallback && !mfaLinkSent && _event !== 'SIGNED_IN') {
+        } else if (pendingMfaNow && !magicLinkCallback && !mfaLinkSent) {
           console.log('Pending MFA: waiting for email code verification');
           setProfileLoading(false);
         } else {
@@ -223,7 +223,7 @@ export default function App() {
         const magicLinkCallback = isMagicLinkCallback();
         const mfaPasswordPhase = sessionStorage.getItem('kizuna_mfa_password_phase') === 'true';
         const mfaLinkSent = sessionStorage.getItem('kizuna_mfa_link_sent') === 'true';
-        if (!pendingMfaNow || magicLinkCallback || ((_event === 'SIGNED_IN' || mfaLinkSent) && !mfaPasswordPhase)) {
+        if (!pendingMfaNow || magicLinkCallback || (mfaLinkSent && !mfaPasswordPhase)) {
           loadUserProfile(session.user);
         }
       }

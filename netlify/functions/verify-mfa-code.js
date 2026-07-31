@@ -27,7 +27,7 @@ const equalHashes = (a, b) => {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 };
 
-exports.handler = async (event) => {
+const handle = async (event) => {
   if (event.httpMethod !== "POST") {
     return jsonResponse(405, { error: "Method Not Allowed" });
   }
@@ -98,4 +98,13 @@ exports.handler = async (event) => {
   if (update.error) return jsonResponse(500, { error: update.error.message });
 
   return jsonResponse(200, { success: true });
+};
+
+exports.handler = async (event) => {
+  try {
+    return await handle(event);
+  } catch (error) {
+    console.error("Unhandled MFA verify error:", error);
+    return jsonResponse(500, { error: error?.message || "MFA verification failed" });
+  }
 };

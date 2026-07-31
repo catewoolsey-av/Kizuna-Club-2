@@ -15,6 +15,16 @@ const getStoredCooldownSeconds = () => {
   return Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
 };
 
+const readFunctionResponse = async (response) => {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return { error: text.slice(0, 240) };
+  }
+};
+
 export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChangeStart, onPasswordChangeComplete, onLoginSuccess, onMfaRequired, memberNeedingPasswordChange, passwordChangeInProgress }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -136,7 +146,6 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       setVerificationCodeSent(false);
       setVerificationCode('');
       setShowMfaStep(true);
-      await sendVerificationCode(normalizedEmail);
       
     } catch (err) {
       sessionStorage.setItem('kizuna_mfa_password_phase', 'false');
@@ -172,7 +181,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
         body: JSON.stringify({ email: targetEmail }),
       });
 
-      const result = await response.json().catch(() => ({}));
+      const result = await readFunctionResponse(response);
       if (!response.ok) throw new Error(result.error || 'SendGrid MFA send failed.');
 
       sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
@@ -222,7 +231,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
         body: JSON.stringify({ email: mfaEmail, code: token }),
       });
 
-      const result = await response.json().catch(() => ({}));
+      const result = await readFunctionResponse(response);
       if (!response.ok) throw new Error(result.error || 'MFA verification failed.');
 
       sessionStorage.setItem('kizuna_pending_mfa', 'false');
