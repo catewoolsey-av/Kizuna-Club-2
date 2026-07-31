@@ -131,10 +131,12 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       sessionStorage.setItem('kizuna_mfa_password_phase', 'false');
       sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
       sessionStorage.setItem(MFA_CODE_SENT_KEY, 'false');
-      setMfaEmail(email.toLowerCase().trim());
+      const normalizedEmail = email.toLowerCase().trim();
+      setMfaEmail(normalizedEmail);
       setVerificationCodeSent(false);
       setVerificationCode('');
       setShowMfaStep(true);
+      await sendVerificationCode(normalizedEmail);
       
     } catch (err) {
       sessionStorage.setItem('kizuna_mfa_password_phase', 'false');
@@ -147,10 +149,10 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
     setLoading(false);
   };
 
-  const handleSendVerificationCode = async () => {
+  const sendVerificationCode = async (targetEmail = mfaEmail) => {
     if (resendCooldown > 0) {
       setError(`Please wait ${resendCooldown}s before requesting another code.`);
-      return;
+      return false;
     }
 
     setLoading(true);
@@ -158,7 +160,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
     
     try {
       const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: mfaEmail,
+        email: targetEmail,
         options: {
           shouldCreateUser: false,
         }
@@ -169,6 +171,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       sessionStorage.setItem(MFA_CODE_SENT_KEY, 'true');
       setVerificationCodeSent(true);
       startMfaCooldown(MFA_CODE_RESEND_SECONDS);
+      return true;
     } catch (err) {
       if (err?.status === 429 || (err?.message || '').toLowerCase().includes('rate limit')) {
         startMfaCooldown(MFA_CODE_RATE_LIMIT_SECONDS);
@@ -177,10 +180,13 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
         setError('Error sending verification code. Please try again.');
       }
       console.error(err);
+      return false;
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
+
+  const handleSendVerificationCode = () => sendVerificationCode();
 
   const handleVerifyCode = async () => {
     const token = verificationCode.replace(/\D/g, '');
