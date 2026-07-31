@@ -1,11 +1,15 @@
-const { createClient } = require("@supabase/supabase-js");
-const crypto = require("node:crypto");
+import { createClient } from "@supabase/supabase-js";
+import crypto from "node:crypto";
 
 const MAX_ATTEMPTS = 5;
 
 const jsonResponse = (statusCode, body) => ({
   statusCode,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": "*",
+  },
   body: JSON.stringify(body),
 });
 
@@ -29,6 +33,7 @@ const equalHashes = (a, b) => {
 
 const handle = async (event) => {
   if (event.httpMethod !== "POST") {
+    if (event.httpMethod === "OPTIONS") return jsonResponse(200, { ok: true });
     return jsonResponse(405, { error: "Method Not Allowed" });
   }
 
@@ -100,7 +105,7 @@ const handle = async (event) => {
   return jsonResponse(200, { success: true });
 };
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   try {
     return await handle(event);
   } catch (error) {

@@ -182,7 +182,9 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       });
 
       const result = await readFunctionResponse(response);
-      if (!response.ok) throw new Error(result.error || 'SendGrid MFA send failed.');
+      if (!response.ok) {
+        throw new Error(result.error || `MFA send failed (${response.status} ${response.statusText || 'error'}).`);
+      }
 
       sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
       sessionStorage.setItem(MFA_CODE_SENT_KEY, 'true');
@@ -232,7 +234,9 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       });
 
       const result = await readFunctionResponse(response);
-      if (!response.ok) throw new Error(result.error || 'MFA verification failed.');
+      if (!response.ok) {
+        throw new Error(result.error || `MFA verification failed (${response.status} ${response.statusText || 'error'}).`);
+      }
 
       sessionStorage.setItem('kizuna_pending_mfa', 'false');
       sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
