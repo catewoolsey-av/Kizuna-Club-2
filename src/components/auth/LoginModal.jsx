@@ -4,6 +4,12 @@ import { colors } from '../../constants/theme';
 import { Button, Input } from '../ui';
 import { supabase } from '../../lib/supabaseClient';
 
+const getAuthRedirectUrl = () => {
+  const configuredUrl = import.meta.env.VITE_AUTH_REDIRECT_URL;
+  const origin = configuredUrl || window.location.origin;
+  return `${origin.replace(/\/$/, '')}?mfa=1`;
+};
+
 export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChangeStart, onPasswordChangeComplete, onLoginSuccess, onMfaRequired, memberNeedingPasswordChange, passwordChangeInProgress }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -137,7 +143,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: mfaEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}?mfa=1`
+          emailRedirectTo: getAuthRedirectUrl()
         }
       });
       
