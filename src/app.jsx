@@ -676,8 +676,16 @@ export default function App() {
                     setMemberNeedingPasswordChange(null);
                     setHasCheckedPasswordRequirement(true);
                   }}
-                  onLoginSuccess={() => {
+                  onLoginSuccess={async () => {
+                    setPendingMfa(false);
+                    sessionStorage.setItem('kizuna_pending_mfa', 'false');
                     setHasCheckedPasswordRequirement(true);
+                    const { data: { session: currentSession } } = await supabase.auth.getSession();
+                    if (currentSession?.user) {
+                      setSession(currentSession);
+                      setUser(currentSession.user);
+                      loadUserProfile(currentSession.user);
+                    }
                   }}
                   onMfaRequired={(isRequired = true) => {
                     setPendingMfa(isRequired);

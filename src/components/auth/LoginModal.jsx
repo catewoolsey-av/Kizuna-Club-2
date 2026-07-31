@@ -53,6 +53,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
     sessionStorage.setItem('kizuna_mfa_password_phase', 'true');
     sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
     sessionStorage.setItem(MFA_CODE_SENT_KEY, 'false');
+    sessionStorage.setItem('kizuna_pending_mfa', 'true');
     if (onMfaRequired) onMfaRequired(true);
     
     try {
@@ -127,7 +128,6 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       }
       
       console.log('✅ Password verified - moving to MFA code step');
-      await supabase.auth.signOut();
       sessionStorage.setItem('kizuna_mfa_password_phase', 'false');
       sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
       sessionStorage.setItem(MFA_CODE_SENT_KEY, 'false');
@@ -159,23 +159,31 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
     setError('');
     
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: targetEmail,
-        options: {
-          shouldCreateUser: false,
-        }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error('Missing auth session for MFA code.');
+
+      const response = await fetch('/.netlify/functions/send-mfa-code', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: targetEmail }),
       });
-      
-      if (otpError) throw otpError;
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'SendGrid MFA send failed.');
+
       sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
       sessionStorage.setItem(MFA_CODE_SENT_KEY, 'true');
       setVerificationCodeSent(true);
       startMfaCooldown(MFA_CODE_RESEND_SECONDS);
       return true;
     } catch (err) {
-      if (err?.status === 429 || (err?.message || '').toLowerCase().includes('rate limit')) {
+      if (err?.status === 429 || (err?.message || '').toLowerCase().includes('wait')) {
         startMfaCooldown(MFA_CODE_RATE_LIMIT_SECONDS);
-        setError('Supabase email rate limit hit. Please wait about 5 minutes before requesting another code.');
+        setError(err.message || 'Please wait before requesting another code.');
       } else {
         setError('Error sending verification code. Please try again.');
       }
@@ -190,8 +198,8 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
 
   const handleVerifyCode = async () => {
     const token = verificationCode.replace(/\D/g, '');
-    if (token.length < 6) {
-      setError('Enter the verification code from your email.');
+    if (token.length !== 8) {
+      setError('Enter the 8-digit verification code from your email.');
       return;
     }
 
@@ -201,13 +209,21 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
     try {
       sessionStorage.setItem('kizuna_mfa_link_sent', 'true');
       sessionStorage.setItem('kizuna_mfa_password_phase', 'false');
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        email: mfaEmail,
-        token,
-        type: 'email',
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error('Missing auth session for MFA verification.');
+
+      const response = await fetch('/.netlify/functions/verify-mfa-code', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: mfaEmail, code: token }),
       });
 
-      if (verifyError) throw verifyError;
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'MFA verification failed.');
 
       sessionStorage.setItem('kizuna_pending_mfa', 'false');
       sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
@@ -217,7 +233,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       if (onMfaRequired) onMfaRequired(false);
       if (onLoginSuccess) onLoginSuccess();
     } catch (err) {
-      setError('Invalid or expired code. Please check the code and try again.');
+      setError(err.message || 'Invalid or expired code. Please check the code and try again.');
       console.error(err);
     }
 
@@ -432,10 +448,10 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
                 Verification code sent. Check your email and avoid requesting another code unless this one expires.
               </div>
               <Input
-                label="Verification Code"
+                label="8-Digit Verification Code"
                 value={verificationCode}
                 onChange={(v) => setVerificationCode(v.replace(/\D/g, '').slice(0, 8))}
-                placeholder="Enter code"
+                placeholder="Enter 8-digit code"
                 inputMode="numeric"
               />
             </div>
@@ -453,12 +469,16 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
               type="button"
               variant="outline"
               className="flex-1"
-              onClick={() => {
+              onClick={async () => {
+                setLoading(true);
                 setShowMfaStep(false);
                 setVerificationCodeSent(false);
                 setVerificationCode('');
                 sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
                 sessionStorage.setItem(MFA_CODE_SENT_KEY, 'false');
+                sessionStorage.setItem('kizuna_pending_mfa', 'false');
+                await supabase.auth.signOut();
+                setLoading(false);
                 if (onMfaRequired) onMfaRequired(false);
               }}
               disabled={loading}
@@ -470,7 +490,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
               variant="primary"
               className="flex-1"
               onClick={verificationCodeSent ? handleVerifyCode : handleSendVerificationCode}
-              disabled={loading || (verificationCodeSent ? verificationCode.replace(/\D/g, '').length < 6 : resendCooldown > 0)}
+              disabled={loading || (verificationCodeSent ? verificationCode.replace(/\D/g, '').length !== 8 : resendCooldown > 0)}
             >
               {loading
                 ? (verificationCodeSent ? 'Verifying...' : 'Sending...')
