@@ -185,7 +185,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
         startMfaCooldown(MFA_CODE_RATE_LIMIT_SECONDS);
         setError(err.message || 'Please wait before requesting another code.');
       } else {
-        setError('Error sending verification code. Please try again.');
+        setError(err.message || 'Error sending verification code. Please try again.');
       }
       console.error(err);
       return false;

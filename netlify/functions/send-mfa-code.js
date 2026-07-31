@@ -84,30 +84,31 @@ exports.handler = async (event) => {
     return jsonResponse(400, { error: "User email is missing" });
   }
 
-  const since = new Date(Date.now() - RESEND_SECONDS * 1000).toISOString();
-  const recent = await supabase
-    .from("mfa_email_codes")
-    .select("id")
-    .eq("auth_user_id", user.id)
-    .gte("created_at", since)
-    .limit(1);
-
-  if (recent.error) return jsonResponse(500, { error: recent.error.message });
-  if ((recent.data || []).length > 0) {
-    return jsonResponse(429, { error: `Please wait ${RESEND_SECONDS} seconds before requesting another code.` });
+  const currentMfa = user.app_metadata?.mfa_email_code || {};
+  const lastSentAt = currentMfa.sent_at ? new Date(currentMfa.sent_at).getTime() : 0;
+  const secondsSinceLastSend = Math.floor((Date.now() - lastSentAt) / 1000);
+  if (lastSentAt && secondsSinceLastSend < RESEND_SECONDS) {
+    return jsonResponse(429, {
+      error: `Please wait ${RESEND_SECONDS - secondsSinceLastSend} seconds before requesting another code.`,
+    });
   }
 
   const code = String(crypto.randomInt(0, 100000000)).padStart(8, "0");
   const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000).toISOString();
 
-  const insert = await supabase.from("mfa_email_codes").insert({
-    auth_user_id: user.id,
-    email,
-    code_hash: hashCode(code, user.id),
-    expires_at: expiresAt,
+  const update = await supabase.auth.admin.updateUserById(user.id, {
+    app_metadata: {
+      ...user.app_metadata,
+      mfa_email_code: {
+        code_hash: hashCode(code, user.id),
+        attempts: 0,
+        expires_at: expiresAt,
+        sent_at: new Date().toISOString(),
+      },
+    },
   });
 
-  if (insert.error) return jsonResponse(500, { error: insert.error.message });
+  if (update.error) return jsonResponse(500, { error: update.error.message });
 
   const sendgridResponse = await fetch("https://api.sendgrid.com/v3/mail/send", {
     method: "POST",

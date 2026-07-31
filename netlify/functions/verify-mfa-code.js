@@ -63,42 +63,37 @@ exports.handler = async (event) => {
   }
 
   const user = authData.user;
-  const { data: codeRows, error: codeError } = await supabase
-    .from("mfa_email_codes")
-    .select("id, code_hash, attempts, expires_at, consumed_at")
-    .eq("auth_user_id", user.id)
-    .is("consumed_at", null)
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  if (codeError) return jsonResponse(500, { error: codeError.message });
-
-  const row = codeRows?.[0];
-  if (!row) {
+  const mfaCode = user.app_metadata?.mfa_email_code;
+  if (!mfaCode?.code_hash || !mfaCode?.expires_at) {
     return jsonResponse(400, { error: "No active verification code. Request a new code." });
   }
 
-  if (new Date(row.expires_at).getTime() < Date.now()) {
+  if (new Date(mfaCode.expires_at).getTime() < Date.now()) {
     return jsonResponse(400, { error: "This code expired. Request a new code." });
   }
 
-  if (row.attempts >= MAX_ATTEMPTS) {
+  if ((mfaCode.attempts || 0) >= MAX_ATTEMPTS) {
     return jsonResponse(429, { error: "Too many incorrect attempts. Request a new code." });
   }
 
   const expectedHash = hashCode(code, user.id);
-  if (!equalHashes(expectedHash, row.code_hash)) {
-    await supabase
-      .from("mfa_email_codes")
-      .update({ attempts: row.attempts + 1 })
-      .eq("id", row.id);
+  if (!equalHashes(expectedHash, mfaCode.code_hash)) {
+    await supabase.auth.admin.updateUserById(user.id, {
+      app_metadata: {
+        ...user.app_metadata,
+        mfa_email_code: {
+          ...mfaCode,
+          attempts: (mfaCode.attempts || 0) + 1,
+        },
+      },
+    });
     return jsonResponse(400, { error: "Invalid verification code." });
   }
 
-  const update = await supabase
-    .from("mfa_email_codes")
-    .update({ consumed_at: new Date().toISOString() })
-    .eq("id", row.id);
+  const { mfa_email_code: _usedCode, ...nextAppMetadata } = user.app_metadata || {};
+  const update = await supabase.auth.admin.updateUserById(user.id, {
+    app_metadata: nextAppMetadata,
+  });
 
   if (update.error) return jsonResponse(500, { error: update.error.message });
 
