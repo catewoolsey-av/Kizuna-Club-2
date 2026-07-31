@@ -7,6 +7,7 @@ export const Input = ({
   placeholder,
   type = "text",
   required = false,
+  ...props
 }) => (
   <div className="w-full">
     {label && (
@@ -22,6 +23,7 @@ export const Input = ({
       placeholder={placeholder}
       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
       required={required}
+      {...props}
     />
   </div>
 );

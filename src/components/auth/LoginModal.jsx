@@ -4,10 +4,15 @@ import { colors } from '../../constants/theme';
 import { Button, Input } from '../ui';
 import { supabase } from '../../lib/supabaseClient';
 
-const getAuthRedirectUrl = () => {
-  const configuredUrl = import.meta.env.VITE_AUTH_REDIRECT_URL;
-  const origin = configuredUrl || window.location.origin;
-  return `${origin.replace(/\/$/, '')}?mfa=1`;
+const MFA_CODE_RESEND_SECONDS = 90;
+const MFA_CODE_RATE_LIMIT_SECONDS = 300;
+const MFA_COOLDOWN_KEY = 'kizuna_mfa_cooldown_until';
+const MFA_CODE_SENT_KEY = 'kizuna_mfa_code_sent';
+
+const getStoredCooldownSeconds = () => {
+  const cooldownUntil = Number(sessionStorage.getItem(MFA_COOLDOWN_KEY) || 0);
+  if (!cooldownUntil) return 0;
+  return Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
 };
 
 export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChangeStart, onPasswordChangeComplete, onLoginSuccess, onMfaRequired, memberNeedingPasswordChange, passwordChangeInProgress }) => {
@@ -17,9 +22,10 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showMfaStep, setShowMfaStep] = useState(false);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [verificationCodeSent, setVerificationCodeSent] = useState(false);
   const [mfaEmail, setMfaEmail] = useState('');
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(getStoredCooldownSeconds);
   
   // Password change state - use internal state for form fields only
   const [newPassword, setNewPassword] = useState('');
@@ -28,10 +34,17 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setInterval(() => {
-      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      const next = getStoredCooldownSeconds();
+      setResendCooldown(next);
+      if (next <= 0) sessionStorage.removeItem(MFA_COOLDOWN_KEY);
     }, 1000);
     return () => clearInterval(timer);
   }, [resendCooldown]);
+
+  const startMfaCooldown = (seconds) => {
+    sessionStorage.setItem(MFA_COOLDOWN_KEY, String(Date.now() + seconds * 1000));
+    setResendCooldown(seconds);
+  };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -39,6 +52,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
     setError('');
     sessionStorage.setItem('kizuna_mfa_password_phase', 'true');
     sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
+    sessionStorage.setItem(MFA_CODE_SENT_KEY, 'false');
     if (onMfaRequired) onMfaRequired(true);
     
     try {
@@ -112,11 +126,14 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
         return;
       }
       
-      console.log('✅ Password verified - moving to MFA magic link step');
+      console.log('✅ Password verified - moving to MFA code step');
       await supabase.auth.signOut();
       sessionStorage.setItem('kizuna_mfa_password_phase', 'false');
+      sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
+      sessionStorage.setItem(MFA_CODE_SENT_KEY, 'false');
       setMfaEmail(email.toLowerCase().trim());
-      setMagicLinkSent(false);
+      setVerificationCodeSent(false);
+      setVerificationCode('');
       setShowMfaStep(true);
       
     } catch (err) {
@@ -130,9 +147,9 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
     setLoading(false);
   };
 
-  const handleSendMagicLink = async () => {
+  const handleSendVerificationCode = async () => {
     if (resendCooldown > 0) {
-      setError(`Please wait ${resendCooldown}s before requesting another link.`);
+      setError(`Please wait ${resendCooldown}s before requesting another code.`);
       return;
     }
 
@@ -143,24 +160,61 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: mfaEmail,
         options: {
-          emailRedirectTo: getAuthRedirectUrl()
+          shouldCreateUser: false,
         }
       });
       
       if (otpError) throw otpError;
-      sessionStorage.setItem('kizuna_mfa_link_sent', 'true');
-      setMagicLinkSent(true);
-      setResendCooldown(60);
+      sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
+      sessionStorage.setItem(MFA_CODE_SENT_KEY, 'true');
+      setVerificationCodeSent(true);
+      startMfaCooldown(MFA_CODE_RESEND_SECONDS);
     } catch (err) {
       if (err?.status === 429 || (err?.message || '').toLowerCase().includes('rate limit')) {
-        setResendCooldown(60);
-        setError('Email rate limit exceeded. Please wait 60 seconds before trying again.');
+        startMfaCooldown(MFA_CODE_RATE_LIMIT_SECONDS);
+        setError('Supabase email rate limit hit. Please wait about 5 minutes before requesting another code.');
       } else {
-        setError('Error sending magic link. Please try again.');
+        setError('Error sending verification code. Please try again.');
       }
       console.error(err);
     }
     
+    setLoading(false);
+  };
+
+  const handleVerifyCode = async () => {
+    const token = verificationCode.replace(/\D/g, '');
+    if (token.length < 6) {
+      setError('Enter the verification code from your email.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      sessionStorage.setItem('kizuna_mfa_link_sent', 'true');
+      sessionStorage.setItem('kizuna_mfa_password_phase', 'false');
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: mfaEmail,
+        token,
+        type: 'email',
+      });
+
+      if (verifyError) throw verifyError;
+
+      sessionStorage.setItem('kizuna_pending_mfa', 'false');
+      sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
+      sessionStorage.setItem(MFA_CODE_SENT_KEY, 'false');
+      sessionStorage.removeItem(MFA_COOLDOWN_KEY);
+      setResendCooldown(0);
+      if (onMfaRequired) onMfaRequired(false);
+      if (onLoginSuccess) onLoginSuccess();
+    } catch (err) {
+      setError('Invalid or expired code. Please check the code and try again.');
+      console.error(err);
+    }
+
     setLoading(false);
   };
   
@@ -354,7 +408,7 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Multi-Factor Authentication</h2>
-              <p className="text-sm text-gray-500">Send a magic link to continue</p>
+              <p className="text-sm text-gray-500">Enter an email code to continue</p>
             </div>
           </div>
           
@@ -363,12 +417,21 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
           </p>
 
           <p className="text-sm text-gray-700 mb-4 text-center">
-            Send a magic link to <span className="font-medium">{mfaEmail}</span> to open the portal.
+            Send a verification code to <span className="font-medium">{mfaEmail}</span> to open the portal.
           </p>
           
-          {magicLinkSent && (
-            <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-              You may close this tab.
+          {verificationCodeSent && (
+            <div className="space-y-3 mb-4">
+              <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+                Verification code sent. Check your email and avoid requesting another code unless this one expires.
+              </div>
+              <Input
+                label="Verification Code"
+                value={verificationCode}
+                onChange={(v) => setVerificationCode(v.replace(/\D/g, '').slice(0, 8))}
+                placeholder="Enter code"
+                inputMode="numeric"
+              />
             </div>
           )}
           
@@ -386,8 +449,10 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
               className="flex-1"
               onClick={() => {
                 setShowMfaStep(false);
-                setMagicLinkSent(false);
+                setVerificationCodeSent(false);
+                setVerificationCode('');
                 sessionStorage.setItem('kizuna_mfa_link_sent', 'false');
+                sessionStorage.setItem(MFA_CODE_SENT_KEY, 'false');
                 if (onMfaRequired) onMfaRequired(false);
               }}
               disabled={loading}
@@ -398,11 +463,28 @@ export const LoginModal = ({ isOpen, onClose, t, inline = false, onPasswordChang
               type="button"
               variant="primary"
               className="flex-1"
-              onClick={handleSendMagicLink}
-              disabled={loading || resendCooldown > 0}
+              onClick={verificationCodeSent ? handleVerifyCode : handleSendVerificationCode}
+              disabled={loading || (verificationCodeSent ? verificationCode.replace(/\D/g, '').length < 6 : resendCooldown > 0)}
             >
-              {loading ? 'Sending...' : (resendCooldown > 0 ? `Retry in ${resendCooldown}s` : (magicLinkSent ? 'Resend Link' : 'Send Magic Link'))}            </Button>
+              {loading
+                ? (verificationCodeSent ? 'Verifying...' : 'Sending...')
+                : verificationCodeSent
+                ? 'Verify Code'
+                : (resendCooldown > 0 ? `Retry in ${resendCooldown}s` : 'Send Code')}
+            </Button>
           </div>
+          {verificationCodeSent && (
+            <div className="mt-3">
+              <button
+                type="button"
+                className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                onClick={handleSendVerificationCode}
+                disabled={loading || resendCooldown > 0}
+              >
+                {resendCooldown > 0 ? `Request another code in ${resendCooldown}s` : 'Send another code'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );

@@ -150,7 +150,7 @@ export default function App() {
             console.log('Pending MFA: ignoring password-phase session during initial load');
             setProfileLoading(false);
           } else if (pendingMfaNow && !magicLinkCallback && !mfaLinkSent) {
-            console.log('Pending MFA: waiting for magic link completion');
+            console.log('Pending MFA: waiting for email code verification');
             setProfileLoading(false);
           } else {
             setProfileLoading(true);
@@ -212,7 +212,7 @@ export default function App() {
           console.log('Pending MFA: ignoring password-phase auth state change');
           setProfileLoading(false);
         } else if (pendingMfaNow && !magicLinkCallback && !mfaLinkSent && _event !== 'SIGNED_IN') {
-          console.log('Pending MFA: waiting for magic link completion');
+          console.log('Pending MFA: waiting for email code verification');
           setProfileLoading(false);
         } else {
           setProfileLoading(true);
@@ -655,9 +655,9 @@ export default function App() {
                   style={{ borderColor: `${colors.primary}33` }}
                 >
                   <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: colors.primary }} />
-                  <h2 className="text-xl font-bold mb-2" style={{ color: colors.primary }}>Magic Link Sent</h2>
+                  <h2 className="text-xl font-bold mb-2" style={{ color: colors.primary }}>Verification Code Sent</h2>
                   <p className="text-base font-medium text-gray-700">
-                    You may close this tab.
+                    Return to the sign-in form and enter the code from your email.
                   </p>
                 </div>
               ) : (
