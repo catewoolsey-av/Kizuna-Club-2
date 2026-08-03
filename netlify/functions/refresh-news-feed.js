@@ -284,13 +284,23 @@ export const handler = async () => {
 
   const errors = [];
 
+  // GDELT rate-limits concurrent requests, so official feeds run in parallel
+  // per-deal, but GDELT lookups are done in a single staggered pass below.
+  const officialItemsByDeal = await Promise.all(
+    (deals || []).map((deal) => fetchOfficialFeedItems(deal))
+  );
+
+  const gdeltItemsByDeal = [];
+  for (const deal of deals || []) {
+    gdeltItemsByDeal.push(await fetchGdeltItems(deal));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+  }
+
   const perDealCounts = await Promise.all(
-    (deals || []).map(async (deal) => {
+    (deals || []).map(async (deal, index) => {
       try {
-        const [officialItems, gdeltItems] = await Promise.all([
-          fetchOfficialFeedItems(deal),
-          fetchGdeltItems(deal),
-        ]);
+        const officialItems = officialItemsByDeal[index];
+        const gdeltItems = gdeltItemsByDeal[index];
         const deduped = new Map();
 
         [...officialItems, ...gdeltItems].forEach((item) => {
