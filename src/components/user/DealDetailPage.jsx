@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from "../../lib/supabaseClient";
 import { Card, Badge, Button, Toast, Modal } from "../../components/ui";
-import { ChevronRight, MessageSquare, CheckCircle, ExternalLink, Upload, X, FileText, Eye, Maximize2, Minimize2 } from 'lucide-react';
+import { ChevronRight, MessageSquare, CheckCircle, ExternalLink, X } from 'lucide-react';
 import { formatDate } from "../../utils/date";
 
 // Helper to get logo URL from storage or return as-is
@@ -25,10 +25,6 @@ const DealDetailPage = ({ deal, onBack, t, isSyndication, userProfile, backLabel
   const [loading, setLoading] = useState(true);
   const [showInvestModal, setShowInvestModal] = useState(false);
   const [showPassModal, setShowPassModal] = useState(false);
-  const [showDescriptionModal, setShowDescriptionModal] = useState(false);
-  const [showDocumentModal, setShowDocumentModal] = useState(false);
-  const [documentUrl, setDocumentUrl] = useState('');
-  const [documentTitle, setDocumentTitle] = useState('');
   const [investmentForm, setInvestmentForm] = useState({
     amountType: 'up_to',
     amount: '',
@@ -36,10 +32,7 @@ const DealDetailPage = ({ deal, onBack, t, isSyndication, userProfile, backLabel
   });
   const [passForm, setPassForm] = useState({ notes: '' });
   const descriptionText = deal?.description || '';
-  const descriptionPreviewLimit = 600;
-  const isDescriptionTruncated = descriptionText.length > descriptionPreviewLimit;
   const coInvestorsText = deal?.coInvestors && deal.coInvestors.length > 0 ? deal.coInvestors.join(', ') : 'N/A';
-  const descriptionLineClamp = coInvestorsText.length > 80 ? 8 : 10;
 
   // Helper to ensure URL has protocol
   const ensureUrl = (url) => {
@@ -319,78 +312,65 @@ const DealDetailPage = ({ deal, onBack, t, isSyndication, userProfile, backLabel
         </div>
       </Card>
 
-      {/* Description - full width */}
-      {descriptionText && (
-        <Card>
-          <p
-            className="text-gray-600 leading-relaxed"
-            style={{
-              display: '-webkit-box',
-              WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: 8,
-              overflow: 'hidden'
-            }}
-          >
-            <span className="font-medium text-gray-700">Description:</span> {descriptionText}
-          </p>
-          {isDescriptionTruncated && (
-            <div className="mt-3">
-              <Button variant="outline" size="sm" onClick={() => setShowDescriptionModal(true)}>
-                See more
-              </Button>
+      {/* Description and Key Details side by side */}
+      <div className="grid lg:grid-cols-5 gap-6 items-start">
+        {descriptionText && (
+          <Card className="lg:col-span-3">
+            <h3 className="font-semibold text-gray-900 mb-3">Description</h3>
+            <div className="max-h-[420px] overflow-y-auto pr-1">
+              <p className="text-gray-600 leading-relaxed whitespace-pre-line">{descriptionText}</p>
             </div>
-          )}
-        </Card>
-      )}
+          </Card>
+        )}
 
-      {/* Key Details */}
-      <Card>
-        <h3 className="font-semibold text-gray-900 mb-4">Key Details</h3>
-        <div className="space-y-3">
-          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-            <p className="text-xs text-gray-500">{t.valuation}</p>
-            <p className="text-lg font-semibold text-gray-900">
-              {formatMonetary(deal.valuation)}
-              {deal.valuation && deal.isPreMoney === true && <span className="text-xs text-gray-500 ml-1">(pre-money)</span>}
-              {deal.valuation && deal.isPreMoney === false && <span className="text-xs text-gray-500 ml-1">(post-money)</span>}
-            </p>
-            {deal.isApproximate && deal.valuation && (
-              <p className="text-[11px] text-gray-500 italic mt-1">To be finalized, discussions around {formatMonetary(deal.valuation)} value</p>
+        <Card className="lg:col-span-2">
+          <h3 className="font-semibold text-gray-900 mb-4">Key Details</h3>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+              <p className="text-xs text-gray-500">{t.valuation}</p>
+              <p className="text-lg font-semibold text-gray-900">
+                {formatMonetary(deal.valuation)}
+                {deal.valuation && deal.isPreMoney === true && <span className="text-xs text-gray-500 ml-1">(pre-money)</span>}
+                {deal.valuation && deal.isPreMoney === false && <span className="text-xs text-gray-500 ml-1">(post-money)</span>}
+              </p>
+              {deal.isApproximate && deal.valuation && (
+                <p className="text-[11px] text-gray-500 italic mt-1">To be finalized, discussions around {formatMonetary(deal.valuation)} value</p>
+              )}
+            </div>
+            {(deal.yearEstablished || deal.city || deal.country) && (
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                <p className="text-xs text-gray-500 mb-2">Company Details</p>
+                <div className="space-y-1 text-sm text-gray-700">
+                  {deal.yearEstablished && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">Year Established:</span>
+                      <span className="font-medium text-gray-900">{deal.yearEstablished}</span>
+                    </div>
+                  )}
+                  {deal.city && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">City:</span>
+                      <span className="font-medium text-gray-900">{deal.city}</span>
+                    </div>
+                  )}
+                  {deal.country && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">Country:</span>
+                      <span className="font-medium text-gray-900">{deal.country}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {coInvestorsText !== 'N/A' && (
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                <p className="text-xs text-gray-500 mb-1">{t.coInvestors}</p>
+                <p className="text-sm text-gray-700">{coInvestorsText}</p>
+              </div>
             )}
           </div>
-          {(deal.yearEstablished || deal.city || deal.country) && (
-            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-              <p className="text-xs text-gray-500 mb-2">Company Details</p>
-              <div className="space-y-1 text-sm text-gray-700">
-                {deal.yearEstablished && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">Year Established:</span>
-                    <span className="font-medium text-gray-900">{deal.yearEstablished}</span>
-                  </div>
-                )}
-                {deal.city && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">City:</span>
-                    <span className="font-medium text-gray-900">{deal.city}</span>
-                  </div>
-                )}
-                {deal.country && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">Country:</span>
-                    <span className="font-medium text-gray-900">{deal.country}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {coInvestorsText !== 'N/A' && (
-            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-              <p className="text-xs text-gray-500 mb-1">{t.coInvestors}</p>
-              <p className="text-sm text-gray-700">{coInvestorsText}</p>
-            </div>
-          )}
-        </div>
-      </Card>
+        </Card>
+      </div>
 
       {/* Interest buttons for syndications */}
       {isSyndication && (
@@ -446,11 +426,6 @@ const DealDetailPage = ({ deal, onBack, t, isSyndication, userProfile, backLabel
           )}
         </Card>
       )}
-
-      <Modal isOpen={showDescriptionModal} onClose={() => setShowDescriptionModal(false)} title="Company Description" size="lg">
-        <p className="text-gray-700 leading-relaxed whitespace-pre-line">{descriptionText}</p>
-      </Modal>
-      
 
       {/* Investment Modal */}
       {showInvestModal && (
@@ -609,101 +584,7 @@ const DealDetailPage = ({ deal, onBack, t, isSyndication, userProfile, backLabel
         </div>
       )}
 
-      {/* Document Viewer (resizable, fullscreen-capable, no print/download toolbar) */}
-      {showDocumentModal && (
-        <DocumentViewer
-          url={documentUrl}
-          title={documentTitle}
-          onClose={() => {
-            setShowDocumentModal(false);
-            setDocumentUrl('');
-            setDocumentTitle('');
-          }}
-        />
-      )}
-      
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-    </div>
-  );
-};
-
-const DocumentViewer = ({ url, title, onClose }) => {
-  const containerRef = useRef(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  useEffect(() => {
-    const handler = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', handler);
-    return () => document.removeEventListener('fullscreenchange', handler);
-  }, []);
-
-  const toggleFullscreen = () => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen?.();
-    } else {
-      el.requestFullscreen?.();
-    }
-  };
-
-  // Hash params hide the built-in PDF viewer toolbar (print/download) in Chromium-based browsers.
-  // Safe for non-PDF URLs — browsers ignore unknown fragments.
-  const sep = url.includes('#') ? '&' : '#';
-  const viewerUrl = url ? `${url}${sep}toolbar=0&navpanes=0&scrollbar=0` : '';
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"
-      style={{ zIndex: 9999 }}
-      onClick={onClose}
-    >
-      <div
-        ref={containerRef}
-        className="bg-white rounded-xl flex flex-col shadow-xl"
-        style={{
-          width: isFullscreen ? '100vw' : '70vw',
-          height: isFullscreen ? '100vh' : '85vh',
-          minWidth: 320,
-          minHeight: 240,
-          maxWidth: '100vw',
-          maxHeight: '100vh',
-          resize: isFullscreen ? 'none' : 'both',
-          overflow: 'hidden',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={toggleFullscreen}
-              className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
-              title={isFullscreen ? 'Exit full screen' : 'Full screen'}
-              type="button"
-            >
-              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-            </button>
-            <button
-              onClick={onClose}
-              className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
-              title="Close"
-              type="button"
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 relative bg-gray-100">
-          {viewerUrl && (
-            <iframe
-              src={viewerUrl}
-              className="w-full h-full border-0"
-              title={title}
-            />
-          )}
-        </div>
-      </div>
     </div>
   );
 };
