@@ -343,167 +343,54 @@ const DealDetailPage = ({ deal, onBack, t, isSyndication, userProfile, backLabel
         </Card>
       )}
 
-      {/* Two equal-width containers: Key Details and Downloads */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Key Details */}
-        <Card>
-          <h3 className="font-semibold text-gray-900 mb-4">Key Details</h3>
-          <div className="space-y-3">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-              <p className="text-xs text-gray-500">{t.valuation}</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {formatMonetary(deal.valuation)}
-                {deal.valuation && deal.isPreMoney === true && <span className="text-xs text-gray-500 ml-1">(pre-money)</span>}
-                {deal.valuation && deal.isPreMoney === false && <span className="text-xs text-gray-500 ml-1">(post-money)</span>}
-              </p>
-              {deal.isApproximate && deal.valuation && (
-                <p className="text-[11px] text-gray-500 italic mt-1">To be finalized, discussions around {formatMonetary(deal.valuation)} value</p>
-              )}
+      {/* Key Details */}
+      <Card>
+        <h3 className="font-semibold text-gray-900 mb-4">Key Details</h3>
+        <div className="space-y-3">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+            <p className="text-xs text-gray-500">{t.valuation}</p>
+            <p className="text-lg font-semibold text-gray-900">
+              {formatMonetary(deal.valuation)}
+              {deal.valuation && deal.isPreMoney === true && <span className="text-xs text-gray-500 ml-1">(pre-money)</span>}
+              {deal.valuation && deal.isPreMoney === false && <span className="text-xs text-gray-500 ml-1">(post-money)</span>}
+            </p>
+            {deal.isApproximate && deal.valuation && (
+              <p className="text-[11px] text-gray-500 italic mt-1">To be finalized, discussions around {formatMonetary(deal.valuation)} value</p>
+            )}
+          </div>
+          {(deal.yearEstablished || deal.city || deal.country) && (
+            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+              <p className="text-xs text-gray-500 mb-2">Company Details</p>
+              <div className="space-y-1 text-sm text-gray-700">
+                {deal.yearEstablished && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">Year Established:</span>
+                    <span className="font-medium text-gray-900">{deal.yearEstablished}</span>
+                  </div>
+                )}
+                {deal.city && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">City:</span>
+                    <span className="font-medium text-gray-900">{deal.city}</span>
+                  </div>
+                )}
+                {deal.country && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">Country:</span>
+                    <span className="font-medium text-gray-900">{deal.country}</span>
+                  </div>
+                )}
+              </div>
             </div>
-            {(deal.yearEstablished || deal.city || deal.country) && (
-              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                <p className="text-xs text-gray-500 mb-2">Company Details</p>
-                <div className="space-y-1 text-sm text-gray-700">
-                  {deal.yearEstablished && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">Year Established:</span>
-                      <span className="font-medium text-gray-900">{deal.yearEstablished}</span>
-                    </div>
-                  )}
-                  {deal.city && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">City:</span>
-                      <span className="font-medium text-gray-900">{deal.city}</span>
-                    </div>
-                  )}
-                  {deal.country && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">Country:</span>
-                      <span className="font-medium text-gray-900">{deal.country}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            {coInvestorsText !== 'N/A' && (
-              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                <p className="text-xs text-gray-500 mb-1">{t.coInvestors}</p>
-                <p className="text-sm text-gray-700">{coInvestorsText}</p>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* Downloads */}
-        <Card className="max-h-[500px] overflow-y-auto">
-          <h3 className="font-semibold text-gray-900 mb-4">Downloads</h3>
-          <div className="space-y-2">
-            {/* DD Memo */}
-            {(deal.memoUrl || deal.memo_url) ? (
-              <div 
-                onClick={() => {
-                  setDocumentUrl(ensureUrl(deal.memoUrl || deal.memo_url));
-                  setDocumentTitle('DD Memo');
-                  setShowDocumentModal(true);
-                }}
-                className="block cursor-pointer"
-              >
-                <div className="p-3 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                      <FileText size={20} className="text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm">DD Memo</p>
-                      <p className="text-xs text-gray-500">Investment analysis</p>
-                    </div>
-                    <Eye size={14} className="text-gray-400 group-hover:text-blue-500" />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-3 border border-dashed border-gray-200 rounded-lg bg-gray-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <FileText size={20} className="text-gray-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-400 text-sm">DD Memo</p>
-                    <p className="text-xs text-gray-400">Not uploaded</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Company Deck */}
-            {(deal.deckUrl || deal.deck_url) ? (
-              <div 
-                onClick={() => {
-                  setDocumentUrl(ensureUrl(deal.deckUrl || deal.deck_url));
-                  setDocumentTitle('Company Deck');
-                  setShowDocumentModal(true);
-                }}
-                className="block cursor-pointer"
-              >
-                <div className="p-3 border border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                      <FileText size={20} className="text-purple-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm">Company Deck</p>
-                      <p className="text-xs text-gray-500">Pitch presentation</p>
-                    </div>
-                    <Eye size={14} className="text-gray-400 group-hover:text-purple-500" />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-3 border border-dashed border-gray-200 rounded-lg bg-gray-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <FileText size={20} className="text-gray-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-400 text-sm">Company Deck</p>
-                    <p className="text-xs text-gray-400">Not uploaded</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Additional Media - handle both naming conventions */}
-            {((deal.additionalMedia && deal.additionalMedia.length > 0) || (deal.additional_media && deal.additional_media.length > 0)) && 
-              (deal.additionalMedia || deal.additional_media).map((media, index) => (
-                media.url && (
-                  <div 
-                    key={index}
-                    onClick={() => {
-                      setDocumentUrl(ensureUrl(media.url));
-                      setDocumentTitle(media.title || `Document ${index + 1}`);
-                      setShowDocumentModal(true);
-                    }}
-                    className="block cursor-pointer"
-                  >
-                    <div className="p-3 border border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all group">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                          <FileText size={20} className="text-green-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 text-sm">{media.title || 'Additional Document'}</p>
-                          <p className="text-xs text-gray-500">Click to view</p>
-                        </div>
-                        <Eye size={14} className="text-gray-400 group-hover:text-green-500" />
-                      </div>
-                    </div>
-                  </div>
-                )
-              ))
-            }
-          </div>
-        </Card>
-      </div>
+          )}
+          {coInvestorsText !== 'N/A' && (
+            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+              <p className="text-xs text-gray-500 mb-1">{t.coInvestors}</p>
+              <p className="text-sm text-gray-700">{coInvestorsText}</p>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Interest buttons for syndications */}
       {isSyndication && (
