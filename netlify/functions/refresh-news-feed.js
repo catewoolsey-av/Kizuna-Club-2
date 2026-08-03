@@ -176,15 +176,15 @@ const parseRssItems = (xml, feedUrl, deal) => {
 const fetchOfficialFeedItems = async (deal) => {
   const websiteUrl = ensureUrl(deal.company_website);
   const feedUrls = await discoverFeedUrls(websiteUrl);
-  const allItems = [];
 
-  for (const feedUrl of feedUrls) {
-    const xml = await fetchText(feedUrl);
-    allItems.push(...parseRssItems(xml, feedUrl, deal));
-    if (allItems.length >= MAX_ITEMS_PER_DEAL) break;
-  }
+  const results = await Promise.all(
+    feedUrls.map(async (feedUrl) => {
+      const xml = await fetchText(feedUrl);
+      return parseRssItems(xml, feedUrl, deal);
+    })
+  );
 
-  return allItems.slice(0, MAX_ITEMS_PER_DEAL);
+  return results.flat().slice(0, MAX_ITEMS_PER_DEAL);
 };
 
 const fetchGdeltItems = async (deal) => {
@@ -220,22 +220,23 @@ const fetchGdeltItems = async (deal) => {
   const relevanceFlags = await judgeRelevanceWithAI(deal, articles);
   const relevantArticles = articles.filter((_, i) => relevanceFlags[i]).slice(0, MAX_ITEMS_PER_DEAL);
 
-  const items = [];
-  for (const article of relevantArticles) {
-    const sourceHost = getHostname(article.url);
-    const body = await fetchText(article.url);
-    items.push({
-      deal_id: deal.id,
-      deal_name: deal.name,
-      title: article.title,
-      summary: stripTags(body).slice(0, 600),
-      source_url: article.url,
-      source_name: article.domain || sourceHost,
-      published_at: article.seendate ? new Date(article.seendate).toISOString() : new Date().toISOString(),
-      fetched_at: new Date().toISOString(),
-      relevance_note: `AI-matched to "${deal.name}"`,
-    });
-  }
+  const items = await Promise.all(
+    relevantArticles.map(async (article) => {
+      const sourceHost = getHostname(article.url);
+      const body = await fetchText(article.url);
+      return {
+        deal_id: deal.id,
+        deal_name: deal.name,
+        title: article.title,
+        summary: stripTags(body).slice(0, 600),
+        source_url: article.url,
+        source_name: article.domain || sourceHost,
+        published_at: article.seendate ? new Date(article.seendate).toISOString() : new Date().toISOString(),
+        fetched_at: new Date().toISOString(),
+        relevance_note: `AI-matched to "${deal.name}"`,
+      };
+    })
+  );
 
   return items;
 };
@@ -261,38 +262,44 @@ export const handler = async () => {
     return jsonResponse(500, { error: dealsError.message });
   }
 
-  let totalStored = 0;
-  let dealsChecked = 0;
   const errors = [];
 
-  for (const deal of deals || []) {
-    try {
-      const officialItems = await fetchOfficialFeedItems(deal);
-      const gdeltItems = await fetchGdeltItems(deal);
-      const deduped = new Map();
+  const perDealCounts = await Promise.all(
+    (deals || []).map(async (deal) => {
+      try {
+        const [officialItems, gdeltItems] = await Promise.all([
+          fetchOfficialFeedItems(deal),
+          fetchGdeltItems(deal),
+        ]);
+        const deduped = new Map();
 
-      [...officialItems, ...gdeltItems].forEach((item) => {
-        deduped.set(`${item.deal_id}:${item.source_url}`, item);
-      });
+        [...officialItems, ...gdeltItems].forEach((item) => {
+          deduped.set(`${item.deal_id}:${item.source_url}`, item);
+        });
 
-      const dealItems = Array.from(deduped.values()).slice(0, MAX_ITEMS_PER_DEAL);
+        const dealItems = Array.from(deduped.values()).slice(0, MAX_ITEMS_PER_DEAL);
 
-      if (dealItems.length > 0) {
-        const { error: upsertError } = await supabase
-          .from("news_feed")
-          .upsert(dealItems, { onConflict: ["deal_id", "source_url"] });
+        if (dealItems.length > 0) {
+          const { error: upsertError } = await supabase
+            .from("news_feed")
+            .upsert(dealItems, { onConflict: ["deal_id", "source_url"] });
 
-        if (upsertError) {
-          errors.push({ deal: deal.name, error: upsertError.message });
-        } else {
-          totalStored += dealItems.length;
+          if (upsertError) {
+            errors.push({ deal: deal.name, error: upsertError.message });
+            return 0;
+          }
+          return dealItems.length;
         }
+        return 0;
+      } catch (error) {
+        errors.push({ deal: deal.name, error: error.message });
+        return 0;
       }
-    } catch (error) {
-      errors.push({ deal: deal.name, error: error.message });
-    }
-    dealsChecked += 1;
-  }
+    })
+  );
+
+  const totalStored = perDealCounts.reduce((sum, n) => sum + n, 0);
+  const dealsChecked = (deals || []).length;
 
   return jsonResponse(200, {
     success: true,
