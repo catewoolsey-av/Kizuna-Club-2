@@ -313,17 +313,17 @@ const DealDetailPage = ({ deal, onBack, t, isSyndication, userProfile, backLabel
       </Card>
 
       {/* Description and Key Details side by side */}
-      <div className="grid lg:grid-cols-5 gap-6 items-start">
+      <div className="grid lg:grid-cols-5 gap-6 items-stretch">
         {descriptionText && (
-          <Card className="lg:col-span-3">
-            <h3 className="font-semibold text-gray-900 mb-3">Description</h3>
-            <div className="max-h-[420px] overflow-y-auto pr-1">
+          <Card className="lg:col-span-3 flex flex-col h-full">
+            <h3 className="font-semibold text-gray-900 mb-3 flex-shrink-0">Description</h3>
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
               <p className="text-gray-600 leading-relaxed whitespace-pre-line">{descriptionText}</p>
             </div>
           </Card>
         )}
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 h-full">
           <h3 className="font-semibold text-gray-900 mb-4">Key Details</h3>
           <div className="space-y-3">
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
