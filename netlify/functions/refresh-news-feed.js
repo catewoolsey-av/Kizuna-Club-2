@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 const MAX_DEALS = 15;
 const MAX_ITEMS_PER_DEAL = 8;
 const RECENT_DAYS = 14;
-const REQUEST_TIMEOUT_MS = 10000;
+const REQUEST_TIMEOUT_MS = 6000;
 
 const jsonResponse = (statusCode, body) => ({
   statusCode,
@@ -25,16 +25,6 @@ const getHostname = (url) => {
   }
 };
 
-const getDomainStem = (hostname) => hostname.split(".")[0] || "";
-
-const normalizeText = (value) =>
-  (value || "")
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
 const getRecentCutoff = () => {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - RECENT_DAYS);
@@ -47,39 +37,48 @@ const isRecentDate = (value) => {
   return Number.isFinite(date.getTime()) && date >= getRecentCutoff();
 };
 
-const getCompanyTokens = (companyName) => {
-  const legalSuffixes = new Set([
-    "ai",
-    "inc",
-    "llc",
-    "ltd",
-    "corp",
-    "corporation",
-    "co",
-    "company",
-    "technologies",
-    "technology",
-  ]);
-  return normalizeText(companyName)
-    .split(" ")
-    .filter((token) => token.length > 2 && !legalSuffixes.has(token));
-};
+const judgeRelevanceWithAI = async (deal, candidates) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || candidates.length === 0) return candidates.map(() => false);
 
-const significantMatch = (text, companyName, websiteHost) => {
-  const normalized = normalizeText(text);
-  const normalizedName = normalizeText(companyName);
-  const tokens = getCompanyTokens(companyName);
-  const hostStem = getDomainStem(websiteHost);
+  const list = candidates
+    .map((c, i) => `${i}. "${c.title}" (source: ${c.domain || getHostname(c.url)}, date: ${c.seendate || "unknown"})`)
+    .join("\n");
 
-  const exactNameMatch = normalized.includes(normalizedName);
-  const tokenMatches = tokens.filter((token) => normalized.includes(token)).length;
-  const domainMatch =
-    !!websiteHost && (normalized.includes(websiteHost) || (!!hostStem && normalized.includes(hostStem)));
+  const prompt = `Company: "${deal.name}" (official website: ${deal.company_website})
 
-  if (exactNameMatch && tokens.length > 1) return true;
-  if (tokens.length > 1 && tokenMatches >= Math.min(tokens.length, 2) && domainMatch) return true;
-  if (tokens.length === 1 && exactNameMatch && domainMatch) return true;
-  return false;
+Below is a numbered list of news article headlines found via keyword search. Some may be about unrelated companies that just share a similar name. Return ONLY a JSON array of the indices (numbers) that are genuinely about this specific company, e.g. [0,2,5]. If none are relevant, return [].
+
+${list}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 300,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return candidates.map(() => false);
+
+    const data = await response.json();
+    const text = data?.content?.[0]?.text || "[]";
+    const match = text.match(/\[[\d,\s]*\]/);
+    const relevantIndices = new Set(match ? JSON.parse(match[0]) : []);
+    return candidates.map((_, i) => relevantIndices.has(i));
+  } catch (_) {
+    return candidates.map(() => false);
+  }
 };
 
 const fetchText = async (url) => {
@@ -124,7 +123,7 @@ const discoverFeedUrls = async (websiteUrl) => {
     discovered.push(absoluteUrl(websiteUrl, match[1] || match[2]));
   }
 
-  const commonPaths = ["/feed", "/rss", "/rss.xml", "/atom.xml", "/news/feed", "/blog/feed"];
+  const commonPaths = ["/feed", "/rss.xml", "/news/feed"];
   for (const path of commonPaths) {
     discovered.push(absoluteUrl(websiteUrl, path));
   }
@@ -212,36 +211,33 @@ const fetchGdeltItems = async (deal) => {
     return [];
   }
 
-  const articles = Array.isArray(payload?.articles) ? payload.articles : [];
-  const candidates = [];
+  const articles = (Array.isArray(payload?.articles) ? payload.articles : [])
+    .filter((article) => article.url && article.title)
+    .slice(0, 20);
 
-  for (const article of articles) {
-    const sourceUrl = article.url;
-    const title = article.title || "";
-    if (!sourceUrl || !title) continue;
+  if (articles.length === 0) return [];
 
-    const sourceHost = getHostname(sourceUrl);
-    const body = await fetchText(sourceUrl);
-    const validationText = [title, article.seendate, article.sourceCollection, sourceHost, body.slice(0, 12000)].join(" ");
+  const relevanceFlags = await judgeRelevanceWithAI(deal, articles);
+  const relevantArticles = articles.filter((_, i) => relevanceFlags[i]).slice(0, MAX_ITEMS_PER_DEAL);
 
-    if (!significantMatch(validationText, deal.name, websiteHost)) continue;
-
-    candidates.push({
+  const items = [];
+  for (const article of relevantArticles) {
+    const sourceHost = getHostname(article.url);
+    const body = await fetchText(article.url);
+    items.push({
       deal_id: deal.id,
       deal_name: deal.name,
-      title,
+      title: article.title,
       summary: stripTags(body).slice(0, 600),
-      source_url: sourceUrl,
+      source_url: article.url,
       source_name: article.domain || sourceHost,
       published_at: article.seendate ? new Date(article.seendate).toISOString() : new Date().toISOString(),
       fetched_at: new Date().toISOString(),
-      relevance_note: `matched "${deal.name}" with ${websiteHost}`,
+      relevance_note: `AI-matched to "${deal.name}"`,
     });
-
-    if (candidates.length >= MAX_ITEMS_PER_DEAL) break;
   }
 
-  return candidates;
+  return items;
 };
 
 export const handler = async () => {
@@ -265,7 +261,8 @@ export const handler = async () => {
     return jsonResponse(500, { error: dealsError.message });
   }
 
-  const collected = [];
+  let totalStored = 0;
+  let dealsChecked = 0;
   const errors = [];
 
   for (const deal of deals || []) {
@@ -278,26 +275,30 @@ export const handler = async () => {
         deduped.set(`${item.deal_id}:${item.source_url}`, item);
       });
 
-      collected.push(...Array.from(deduped.values()).slice(0, MAX_ITEMS_PER_DEAL));
+      const dealItems = Array.from(deduped.values()).slice(0, MAX_ITEMS_PER_DEAL);
+
+      if (dealItems.length > 0) {
+        const { error: upsertError } = await supabase
+          .from("news_feed")
+          .upsert(dealItems, { onConflict: ["deal_id", "source_url"] });
+
+        if (upsertError) {
+          errors.push({ deal: deal.name, error: upsertError.message });
+        } else {
+          totalStored += dealItems.length;
+        }
+      }
     } catch (error) {
       errors.push({ deal: deal.name, error: error.message });
     }
-  }
-
-  if (collected.length > 0) {
-    const { error: upsertError } = await supabase
-      .from("news_feed")
-      .upsert(collected, { onConflict: ["deal_id", "source_url"] });
-
-    if (upsertError) {
-      return jsonResponse(500, { error: upsertError.message, collected: collected.length });
-    }
+    dealsChecked += 1;
   }
 
   return jsonResponse(200, {
     success: true,
-    dealsChecked: deals?.length || 0,
-    articlesStored: collected.length,
+    dealsChecked,
+    dealsTotal: deals?.length || 0,
+    articlesStored: totalStored,
     errors,
   });
 };
