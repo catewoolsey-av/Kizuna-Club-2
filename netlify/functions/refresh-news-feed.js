@@ -25,16 +25,16 @@ const getHostname = (url) => {
   }
 };
 
-const parseGdeltDate = (value) => {
+const parseFlexibleDate = (value) => {
   if (!value) return new Date().toISOString();
 
   const direct = new Date(value);
   if (!Number.isNaN(direct.getTime())) return direct.toISOString();
 
-  // GDELT seendate format: YYYYMMDDHHMMSS (no separators)
-  const match = String(value).match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})(\d{2})(\d{2})/);
+  // Handles compact formats like YYYYMMDDHHMMSS
+  const match = String(value).match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?(\d{2})?/);
   if (match) {
-    const [, year, month, day, hour, minute, second] = match;
+    const [, year, month, day, hour = "00", minute = "00", second = "00"] = match;
     const isoLike = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
     const parsed = new Date(isoLike);
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
@@ -55,27 +55,22 @@ const isRecentDate = (value) => {
   return Number.isFinite(date.getTime()) && date >= getRecentCutoff();
 };
 
-const judgeRelevanceWithAI = async (deal, candidates) => {
+const AI_SEARCH_TIMEOUT_MS = 25000;
+
+const fetchAiNewsItems = async (deal) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.log(`No ANTHROPIC_API_KEY set - skipping AI relevance check for ${deal.name}`);
-    return candidates.map(() => false);
+    console.log(`No ANTHROPIC_API_KEY set - skipping AI news search for ${deal.name}`);
+    return [];
   }
-  if (candidates.length === 0) return [];
 
-  const list = candidates
-    .map((c, i) => `${i}. "${c.title}" (source: ${c.domain || getHostname(c.url)}, date: ${c.seendate || "unknown"})`)
-    .join("\n");
+  const prompt = `Search the web for genuine, recent (last ${RECENT_DAYS} days) news about the company "${deal.name}" (official website: ${deal.company_website}). Do not include results about other companies that just happen to share a similar name.
 
-  const prompt = `Company: "${deal.name}" (official website: ${deal.company_website})
-
-Below is a numbered list of news article headlines found via keyword search. Some may be about unrelated companies that just share a similar name. Return ONLY a JSON array of the indices (numbers) that are genuinely about this specific company, e.g. [0,2,5]. If none are relevant, return [].
-
-${list}`;
+Respond with ONLY a JSON array (no other text before or after) of up to ${MAX_ITEMS_PER_DEAL} objects, each with fields: "title", "url", "published_date" (YYYY-MM-DD), "summary" (one sentence). If you find no genuine recent news, respond with exactly: []`;
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), AI_SEARCH_TIMEOUT_MS);
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       signal: controller.signal,
@@ -86,26 +81,60 @@ ${list}`;
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 300,
+        max_tokens: 1500,
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
         messages: [{ role: "user", content: prompt }],
       }),
     });
     clearTimeout(timeout);
+
     if (!response.ok) {
       const errText = await response.text().catch(() => "");
-      console.log(`AI relevance call failed for ${deal.name}: ${response.status} ${errText}`);
-      return candidates.map(() => false);
+      console.log(`AI web search failed for ${deal.name}: ${response.status} ${errText}`);
+      return [];
     }
 
     const data = await response.json();
-    const text = data?.content?.[0]?.text || "[]";
-    const match = text.match(/\[[\d,\s]*\]/);
-    const relevantIndices = new Set(match ? JSON.parse(match[0]) : []);
-    console.log(`AI relevance for ${deal.name}: ${relevantIndices.size}/${candidates.length} matched`);
-    return candidates.map((_, i) => relevantIndices.has(i));
+    const blockTypes = (data.content || []).map((b) => b.type).join(",");
+    console.log(`AI web search for ${deal.name}: stop_reason=${data.stop_reason}, blocks=[${blockTypes}]`);
+
+    const textBlocks = (data.content || [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n");
+    const match = textBlocks.match(/\[[\s\S]*\]/);
+    if (!match) {
+      console.log(`AI web search for ${deal.name}: no JSON array found in response text: ${textBlocks.slice(0, 300)}`);
+      return [];
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(match[0]);
+    } catch (error) {
+      console.log(`AI web search for ${deal.name}: JSON parse failed: ${error.message}`);
+      return [];
+    }
+
+    console.log(`AI web search for ${deal.name}: ${parsed.length} articles found`);
+
+    return parsed
+      .filter((article) => article && article.title && article.url)
+      .slice(0, MAX_ITEMS_PER_DEAL)
+      .map((article) => ({
+        deal_id: deal.id,
+        deal_name: deal.name,
+        title: article.title,
+        summary: (article.summary || "").slice(0, 600),
+        source_url: article.url,
+        source_name: getHostname(article.url),
+        published_at: parseFlexibleDate(article.published_date),
+        fetched_at: new Date().toISOString(),
+        relevance_note: `AI web search match for "${deal.name}"`,
+      }));
   } catch (error) {
-    console.log(`AI relevance error for ${deal.name}: ${error.message}`);
-    return candidates.map(() => false);
+    console.log(`AI web search error for ${deal.name}: ${error.message}`);
+    return [];
   }
 };
 
@@ -215,65 +244,6 @@ const fetchOfficialFeedItems = async (deal) => {
   return results.flat().slice(0, MAX_ITEMS_PER_DEAL);
 };
 
-const fetchGdeltItems = async (deal) => {
-  const websiteHost = getHostname(deal.company_website);
-  if (!websiteHost) return [];
-
-  const query = `"${deal.name}"`;
-  const gdeltUrl = new URL("https://api.gdeltproject.org/api/v2/doc/doc");
-  gdeltUrl.searchParams.set("query", query);
-  gdeltUrl.searchParams.set("mode", "ArtList");
-  gdeltUrl.searchParams.set("format", "json");
-  gdeltUrl.searchParams.set("maxrecords", "20");
-  gdeltUrl.searchParams.set("sort", "DateDesc");
-  gdeltUrl.searchParams.set("timespan", `${RECENT_DAYS}d`);
-
-  let payload;
-  try {
-    const response = await fetch(gdeltUrl.toString(), {
-      headers: { "User-Agent": "KizunaClubNewsBot/1.0" },
-    });
-    if (!response.ok) {
-      console.log(`GDELT request failed for ${deal.name}: ${response.status}`);
-      return [];
-    }
-    payload = await response.json();
-  } catch (error) {
-    console.log(`GDELT request error for ${deal.name}: ${error.message}`);
-    return [];
-  }
-
-  const articles = (Array.isArray(payload?.articles) ? payload.articles : [])
-    .filter((article) => article.url && article.title)
-    .slice(0, 20);
-
-  console.log(`GDELT candidates for ${deal.name}: ${articles.length}`);
-  if (articles.length === 0) return [];
-
-  const relevanceFlags = await judgeRelevanceWithAI(deal, articles);
-  const relevantArticles = articles.filter((_, i) => relevanceFlags[i]).slice(0, MAX_ITEMS_PER_DEAL);
-
-  const items = await Promise.all(
-    relevantArticles.map(async (article) => {
-      const sourceHost = getHostname(article.url);
-      const body = await fetchText(article.url);
-      return {
-        deal_id: deal.id,
-        deal_name: deal.name,
-        title: article.title,
-        summary: stripTags(body).slice(0, 600),
-        source_url: article.url,
-        source_name: article.domain || sourceHost,
-        published_at: parseGdeltDate(article.seendate),
-        fetched_at: new Date().toISOString(),
-        relevance_note: `AI-matched to "${deal.name}"`,
-      };
-    })
-  );
-
-  return items;
-};
-
 export const handler = async () => {
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -302,36 +272,33 @@ export const handler = async () => {
 
   const errors = [];
 
-  // GDELT rate-limits concurrent requests, so official feeds run in parallel
-  // per-deal, but GDELT lookups are done in a single staggered pass below.
-  const officialItemsByDeal = await Promise.all(
-    (deals || []).map((deal) =>
-      fetchOfficialFeedItems(deal).catch((error) => {
-        errors.push({ deal: deal.name, error: `official feed: ${error.message}` });
-        return [];
-      })
-    )
-  );
-
-  const gdeltItemsByDeal = [];
-  for (const deal of deals || []) {
-    try {
-      gdeltItemsByDeal.push(await fetchGdeltItems(deal));
-    } catch (error) {
-      errors.push({ deal: deal.name, error: `gdelt: ${error.message}` });
-      gdeltItemsByDeal.push([]);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-  }
+  const [officialItemsByDeal, aiItemsByDeal] = await Promise.all([
+    Promise.all(
+      (deals || []).map((deal) =>
+        fetchOfficialFeedItems(deal).catch((error) => {
+          errors.push({ deal: deal.name, error: `official feed: ${error.message}` });
+          return [];
+        })
+      )
+    ),
+    Promise.all(
+      (deals || []).map((deal) =>
+        fetchAiNewsItems(deal).catch((error) => {
+          errors.push({ deal: deal.name, error: `ai search: ${error.message}` });
+          return [];
+        })
+      )
+    ),
+  ]);
 
   const perDealCounts = await Promise.all(
     (deals || []).map(async (deal, index) => {
       try {
         const officialItems = officialItemsByDeal[index];
-        const gdeltItems = gdeltItemsByDeal[index];
+        const aiItems = aiItemsByDeal[index];
         const deduped = new Map();
 
-        [...officialItems, ...gdeltItems].forEach((item) => {
+        [...officialItems, ...aiItems].forEach((item) => {
           deduped.set(`${item.deal_id}:${item.source_url}`, item);
         });
 
