@@ -1,4 +1,4 @@
-const { createClient } = require("@supabase/supabase-js");
+import { createClient } from "@supabase/supabase-js";
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -10,7 +10,11 @@ const escapeHtml = (value = "") =>
 
 const jsonResponse = (statusCode, body) => ({
   statusCode,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": "*",
+  },
   body: JSON.stringify(body),
 });
 
@@ -57,7 +61,7 @@ const buildHtml = ({ type, title, summary, actionUrl }) => {
   `;
 };
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return jsonResponse(405, { error: "Method Not Allowed" });
