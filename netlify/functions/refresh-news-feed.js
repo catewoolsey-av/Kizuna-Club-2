@@ -25,6 +25,24 @@ const getHostname = (url) => {
   }
 };
 
+const parseGdeltDate = (value) => {
+  if (!value) return new Date().toISOString();
+
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct.toISOString();
+
+  // GDELT seendate format: YYYYMMDDHHMMSS (no separators)
+  const match = String(value).match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})(\d{2})(\d{2})/);
+  if (match) {
+    const [, year, month, day, hour, minute, second] = match;
+    const isoLike = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
+    const parsed = new Date(isoLike);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+
+  return new Date().toISOString();
+};
+
 const getRecentCutoff = () => {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - RECENT_DAYS);
@@ -246,7 +264,7 @@ const fetchGdeltItems = async (deal) => {
         summary: stripTags(body).slice(0, 600),
         source_url: article.url,
         source_name: article.domain || sourceHost,
-        published_at: article.seendate ? new Date(article.seendate).toISOString() : new Date().toISOString(),
+        published_at: parseGdeltDate(article.seendate),
         fetched_at: new Date().toISOString(),
         relevance_note: `AI-matched to "${deal.name}"`,
       };
@@ -287,12 +305,22 @@ export const handler = async () => {
   // GDELT rate-limits concurrent requests, so official feeds run in parallel
   // per-deal, but GDELT lookups are done in a single staggered pass below.
   const officialItemsByDeal = await Promise.all(
-    (deals || []).map((deal) => fetchOfficialFeedItems(deal))
+    (deals || []).map((deal) =>
+      fetchOfficialFeedItems(deal).catch((error) => {
+        errors.push({ deal: deal.name, error: `official feed: ${error.message}` });
+        return [];
+      })
+    )
   );
 
   const gdeltItemsByDeal = [];
   for (const deal of deals || []) {
-    gdeltItemsByDeal.push(await fetchGdeltItems(deal));
+    try {
+      gdeltItemsByDeal.push(await fetchGdeltItems(deal));
+    } catch (error) {
+      errors.push({ deal: deal.name, error: `gdelt: ${error.message}` });
+      gdeltItemsByDeal.push([]);
+    }
     await new Promise((resolve) => setTimeout(resolve, 1200));
   }
 
