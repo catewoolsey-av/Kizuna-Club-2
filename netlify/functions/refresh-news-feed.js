@@ -39,7 +39,11 @@ const isRecentDate = (value) => {
 
 const judgeRelevanceWithAI = async (deal, candidates) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || candidates.length === 0) return candidates.map(() => false);
+  if (!apiKey) {
+    console.log(`No ANTHROPIC_API_KEY set - skipping AI relevance check for ${deal.name}`);
+    return candidates.map(() => false);
+  }
+  if (candidates.length === 0) return [];
 
   const list = candidates
     .map((c, i) => `${i}. "${c.title}" (source: ${c.domain || getHostname(c.url)}, date: ${c.seendate || "unknown"})`)
@@ -69,14 +73,20 @@ ${list}`;
       }),
     });
     clearTimeout(timeout);
-    if (!response.ok) return candidates.map(() => false);
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      console.log(`AI relevance call failed for ${deal.name}: ${response.status} ${errText}`);
+      return candidates.map(() => false);
+    }
 
     const data = await response.json();
     const text = data?.content?.[0]?.text || "[]";
     const match = text.match(/\[[\d,\s]*\]/);
     const relevantIndices = new Set(match ? JSON.parse(match[0]) : []);
+    console.log(`AI relevance for ${deal.name}: ${relevantIndices.size}/${candidates.length} matched`);
     return candidates.map((_, i) => relevantIndices.has(i));
-  } catch (_) {
+  } catch (error) {
+    console.log(`AI relevance error for ${deal.name}: ${error.message}`);
     return candidates.map(() => false);
   }
 };
@@ -205,9 +215,13 @@ const fetchGdeltItems = async (deal) => {
     const response = await fetch(gdeltUrl.toString(), {
       headers: { "User-Agent": "KizunaClubNewsBot/1.0" },
     });
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.log(`GDELT request failed for ${deal.name}: ${response.status}`);
+      return [];
+    }
     payload = await response.json();
-  } catch (_) {
+  } catch (error) {
+    console.log(`GDELT request error for ${deal.name}: ${error.message}`);
     return [];
   }
 
@@ -215,6 +229,7 @@ const fetchGdeltItems = async (deal) => {
     .filter((article) => article.url && article.title)
     .slice(0, 20);
 
+  console.log(`GDELT candidates for ${deal.name}: ${articles.length}`);
   if (articles.length === 0) return [];
 
   const relevanceFlags = await judgeRelevanceWithAI(deal, articles);
@@ -262,6 +277,11 @@ export const handler = async () => {
     return jsonResponse(500, { error: dealsError.message });
   }
 
+  console.log(
+    "Deals with company_website:",
+    (deals || []).map((d) => `${d.name} -> ${d.company_website}`)
+  );
+
   const errors = [];
 
   const perDealCounts = await Promise.all(
@@ -300,6 +320,8 @@ export const handler = async () => {
 
   const totalStored = perDealCounts.reduce((sum, n) => sum + n, 0);
   const dealsChecked = (deals || []).length;
+
+  console.log("News feed refresh result:", JSON.stringify({ dealsChecked, totalStored, errors }));
 
   return jsonResponse(200, {
     success: true,
