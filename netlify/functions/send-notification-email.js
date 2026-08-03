@@ -58,105 +58,110 @@ const buildHtml = ({ type, title, summary, actionUrl }) => {
 };
 
 exports.handler = async (event) => {
-  if (event.httpMethod !== "POST") {
-    return jsonResponse(405, { error: "Method Not Allowed" });
-  }
-
-  const supabaseUrl = process.env.VITE_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const sendgridApiKey = process.env.SENDGRID_API_KEY;
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
-  const fromName = process.env.SENDGRID_FROM_NAME || "Kizuna Club";
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return jsonResponse(500, { error: "Missing Supabase server environment variables" });
-  }
-
-  if (!sendgridApiKey || !fromEmail) {
-    return jsonResponse(200, { skipped: true, reason: "SendGrid is not configured" });
-  }
-
-  let payload;
   try {
-    payload = JSON.parse(event.body || "{}");
-  } catch (_) {
-    return jsonResponse(400, { error: "Invalid JSON body" });
-  }
+    if (event.httpMethod !== "POST") {
+      return jsonResponse(405, { error: "Method Not Allowed" });
+    }
 
-  const { type, title, summary, subject: subjectOverride, actionUrl } = payload;
-  if (!type || !title) {
-    return jsonResponse(400, { error: "Missing type or title" });
-  }
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const sendgridApiKey = process.env.SENDGRID_API_KEY;
+    const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+    const fromName = process.env.SENDGRID_FROM_NAME || "Kizuna Club";
 
-  const token = getBearerToken(event.headers);
-  if (!token) {
-    return jsonResponse(401, { error: "Missing auth token" });
-  }
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonResponse(500, { error: "Missing Supabase server environment variables" });
+    }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
-  const { data: authData, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !authData?.user) {
-    return jsonResponse(401, { error: "Invalid auth token" });
-  }
+    if (!sendgridApiKey || !fromEmail) {
+      return jsonResponse(200, { skipped: true, reason: "SendGrid is not configured" });
+    }
 
-  const userId = authData.user.id;
-  const [memberAdmin, leaderAdmin] = await Promise.all([
-    supabase.from("members").select("id").eq("auth_user_id", userId).eq("is_board", true).maybeSingle(),
-    supabase.from("leadership").select("id").eq("auth_user_id", userId).maybeSingle(),
-  ]);
+    let payload;
+    try {
+      payload = JSON.parse(event.body || "{}");
+    } catch (_) {
+      return jsonResponse(400, { error: "Invalid JSON body" });
+    }
 
-  if (!memberAdmin.data && !leaderAdmin.data) {
-    return jsonResponse(403, { error: "Only admins can send notifications" });
-  }
+    const { type, title, summary, subject: subjectOverride, actionUrl } = payload;
+    if (!type || !title) {
+      return jsonResponse(400, { error: "Missing type or title" });
+    }
 
-  const membersRes = await supabase.from("members").select("email").not("email", "is", null);
+    const token = getBearerToken(event.headers);
+    if (!token) {
+      return jsonResponse(401, { error: "Missing auth token" });
+    }
 
-  if (membersRes.error) return jsonResponse(500, { error: membersRes.error.message });
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authData?.user) {
+      return jsonResponse(401, { error: "Invalid auth token" });
+    }
 
-  const recipients = Array.from(
-    new Set(
-      (membersRes.data || [])
-        .map((row) => row.email?.trim().toLowerCase())
-        .filter(Boolean)
-    )
-  );
-  const bccRecipients = recipients.includes(DEFAULT_CC_EMAIL)
-    ? []
-    : [{ email: DEFAULT_CC_EMAIL }];
+    const userId = authData.user.id;
+    const [memberAdmin, leaderAdmin] = await Promise.all([
+      supabase.from("members").select("id").eq("auth_user_id", userId).eq("is_board", true).maybeSingle(),
+      supabase.from("leadership").select("id").eq("auth_user_id", userId).maybeSingle(),
+    ]);
 
-  if (recipients.length === 0) {
-    return jsonResponse(200, { skipped: true, reason: "No recipients" });
-  }
+    if (!memberAdmin.data && !leaderAdmin.data) {
+      return jsonResponse(403, { error: "Only admins can send notifications" });
+    }
 
-  const subject = subjectOverride || getSubject(type, title);
-  const emailPayload = {
-    personalizations: recipients.map((email) => ({
-      to: [{ email }],
-      ...(bccRecipients.length > 0 ? { bcc: bccRecipients } : {}),
-      subject,
-    })),
-    from: { email: fromEmail, name: fromName },
-    content: [
-      {
-        type: "text/html",
-        value: buildHtml({ type, title, summary, actionUrl }),
+    const membersRes = await supabase.from("members").select("email").not("email", "is", null);
+
+    if (membersRes.error) return jsonResponse(500, { error: membersRes.error.message });
+
+    const recipients = Array.from(
+      new Set(
+        (membersRes.data || [])
+          .map((row) => row.email?.trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+    const bccRecipients = recipients.includes(DEFAULT_CC_EMAIL)
+      ? []
+      : [{ email: DEFAULT_CC_EMAIL }];
+
+    if (recipients.length === 0) {
+      return jsonResponse(200, { skipped: true, reason: "No recipients" });
+    }
+
+    const subject = subjectOverride || getSubject(type, title);
+    const emailPayload = {
+      personalizations: recipients.map((email) => ({
+        to: [{ email }],
+        ...(bccRecipients.length > 0 ? { bcc: bccRecipients } : {}),
+        subject,
+      })),
+      from: { email: fromEmail, name: fromName },
+      content: [
+        {
+          type: "text/html",
+          value: buildHtml({ type, title, summary, actionUrl }),
+        },
+      ],
+    };
+
+    const sendgridResponse = await fetch("https://api.sendgrid.com/v3/mail/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${sendgridApiKey}`,
+        "Content-Type": "application/json",
       },
-    ],
-  };
+      body: JSON.stringify(emailPayload),
+    });
 
-  const sendgridResponse = await fetch("https://api.sendgrid.com/v3/mail/send", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${sendgridApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(emailPayload),
-  });
+    if (!sendgridResponse.ok) {
+      const errorText = await sendgridResponse.text();
+      return jsonResponse(sendgridResponse.status, { error: errorText || "SendGrid send failed" });
+    }
 
-  if (!sendgridResponse.ok) {
-    const errorText = await sendgridResponse.text();
-    return jsonResponse(sendgridResponse.status, { error: errorText || "SendGrid send failed" });
+    return jsonResponse(200, { success: true, recipients: recipients.length });
+  } catch (error) {
+    console.error("Unhandled email notification error:", error);
+    return jsonResponse(500, { error: error?.message || "Email notification failed" });
   }
-
-  return jsonResponse(200, { success: true, recipients: recipients.length });
 };
