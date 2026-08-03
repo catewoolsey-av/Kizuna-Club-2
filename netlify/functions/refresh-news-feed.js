@@ -1,4 +1,4 @@
-const { createClient } = require("@supabase/supabase-js");
+import { createClient } from "@supabase/supabase-js";
 
 const MAX_DEALS = 15;
 const MAX_ITEMS_PER_DEAL = 8;
