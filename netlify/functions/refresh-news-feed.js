@@ -287,7 +287,7 @@ exports.handler = async () => {
   if (collected.length > 0) {
     const { error: upsertError } = await supabase
       .from("news_feed")
-      .upsert(collected, { onConflict: "deal_id,source_url" });
+      .upsert(collected, { onConflict: ["deal_id", "source_url"] });
 
     if (upsertError) {
       return jsonResponse(500, { error: upsertError.message, collected: collected.length });
