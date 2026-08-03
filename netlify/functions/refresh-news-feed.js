@@ -244,7 +244,7 @@ const fetchGdeltItems = async (deal) => {
   return candidates;
 };
 
-exports.handler = async () => {
+export const handler = async () => {
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
