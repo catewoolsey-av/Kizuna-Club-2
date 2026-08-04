@@ -118,13 +118,19 @@ export const handler = async (event) => {
 
     if (membersRes.error) return jsonResponse(500, { error: membersRes.error.message });
 
-    const recipients = Array.from(
+    const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const uniqueEmails = Array.from(
       new Set(
         (membersRes.data || [])
           .map((row) => row.email?.trim().toLowerCase())
           .filter(Boolean)
       )
     );
+    const recipients = uniqueEmails.filter((email) => EMAIL_REGEX.test(email));
+    const invalidEmails = uniqueEmails.filter((email) => !EMAIL_REGEX.test(email));
+    if (invalidEmails.length > 0) {
+      console.warn("Skipping malformed member email(s):", invalidEmails);
+    }
     const needsOwnCopy = !recipients.includes(DEFAULT_CC_EMAIL);
 
     if (recipients.length === 0) {
@@ -160,7 +166,11 @@ export const handler = async (event) => {
       return jsonResponse(sendgridResponse.status, { error: errorText || "SendGrid send failed" });
     }
 
-    return jsonResponse(200, { success: true, recipients: recipients.length });
+    return jsonResponse(200, {
+      success: true,
+      recipients: recipients.length,
+      skippedInvalid: invalidEmails.length,
+    });
   } catch (error) {
     console.error("Unhandled email notification error:", error);
     return jsonResponse(500, { error: error?.message || "Email notification failed" });
