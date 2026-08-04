@@ -102,6 +102,7 @@ export default function App() {
     dinners: [],
     announcements: [],
     newsFeed: [],
+    newsFeedStatus: { lastRunAt: null },
     documentUpdates: [],
     activityLog: [],
     memberInvestments: [],
@@ -452,7 +453,7 @@ export default function App() {
     try {
       setDataLoading(true);
       
-      const [leadershipRes, membersRes, discussionsRes, fundHoldingsRes, syndicationRes, dinnersRes, announcementsRes, newsFeedRes, documentUpdatesRes, activityRes, recruitsRes, investmentsRes] = await Promise.all([
+      const [leadershipRes, membersRes, discussionsRes, fundHoldingsRes, syndicationRes, dinnersRes, announcementsRes, newsFeedRes, newsFeedStatusRes, documentUpdatesRes, activityRes, recruitsRes, investmentsRes] = await Promise.all([
         supabase.from('leadership').select('*').order('created_at'),
         supabase.from('members').select('*').order('created_at'),
         supabase.from('discussions').select('*').order('date', { ascending: false }),
@@ -461,6 +462,7 @@ export default function App() {
         supabase.from('dinners').select('*').order('date', { ascending: false }),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }),
         supabase.from('news_feed').select('*').order('published_at', { ascending: false }).limit(100),
+        supabase.from('news_feed_refresh_status').select('*').eq('id', 1).maybeSingle(),
         supabase.from('document_updates').select('*').order('created_at', { ascending: false }),
         supabase.from('activity_log').select('*').order('timestamp', { ascending: false }),
         supabase.from('recruits').select('*').order('created_at', { ascending: false }),
@@ -488,6 +490,7 @@ export default function App() {
       const dinnersData = (dinnersRes.data || []).map(mapDinner);
       const announcementsData = (announcementsRes.data || []).map(mapAnnouncement);
       const newsFeedData = (newsFeedRes.data || []).map(mapNewsItem);
+      const newsFeedStatusData = { lastRunAt: newsFeedStatusRes.data?.last_run_at || null };
       const documentUpdatesData = (documentUpdatesRes.data || []).map(mapDocumentUpdate);
       const activityData = (activityRes.data || []).map(mapLog);
       const recruitsData = (recruitsRes.data || []).map(mapRecruit);
@@ -503,6 +506,7 @@ export default function App() {
         dinners: dinnersData,
         announcements: announcementsData,
         newsFeed: newsFeedData,
+        newsFeedStatus: newsFeedStatusData,
         documentUpdates: documentUpdatesData,
         activityLog: activityData,
         memberInvestments: investmentsData,

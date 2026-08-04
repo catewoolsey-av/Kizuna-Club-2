@@ -19,6 +19,20 @@ const formatDate = (value) => {
   });
 };
 
+const formatRelativeTime = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.round(diffMs / 60000);
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+};
+
 const getHostname = (url) => {
   try {
     return new URL(ensureUrl(url)).hostname.replace(/^www\./, "");
@@ -31,12 +45,20 @@ const NewsFeedView = ({ data }) => {
   const [selectedDealId, setSelectedDealId] = useState("all");
   const fundHoldings = data.fundHoldings || [];
   const newsFeed = data.newsFeed || [];
+  const newsFeedStatus = data.newsFeedStatus || {};
+  const lastRefreshedLabel = formatRelativeTime(newsFeedStatus.lastRunAt);
+  const lastRunAt = newsFeedStatus.lastRunAt ? new Date(newsFeedStatus.lastRunAt).getTime() : null;
 
   const fundDealIds = useMemo(() => new Set(fundHoldings.map((deal) => deal.id)), [fundHoldings]);
-  const filteredItems = newsFeed.filter((item) => {
-    if (!fundDealIds.has(item.dealId)) return false;
-    return selectedDealId === "all" || item.dealId === selectedDealId;
-  });
+  const filteredItems = newsFeed
+    .filter((item) => {
+      if (!fundDealIds.has(item.dealId)) return false;
+      return selectedDealId === "all" || item.dealId === selectedDealId;
+    })
+    .map((item) => ({
+      ...item,
+      isNew: Boolean(lastRunAt && item.created_at && new Date(item.created_at).getTime() >= lastRunAt),
+    }));
   const selectedDeal = fundHoldings.find((deal) => deal.id === selectedDealId);
   const holdingsWithoutWebsites = fundHoldings.filter((deal) => !deal.companyWebsite);
 
@@ -54,7 +76,7 @@ const NewsFeedView = ({ data }) => {
         </div>
         <div className="text-sm text-gray-500 flex items-center gap-2">
           <RefreshCw size={15} />
-          Refreshes daily and shows what is new
+          {lastRefreshedLabel ? `Last refreshed ${lastRefreshedLabel}` : "Refreshes daily"}
         </div>
       </div>
 
@@ -119,6 +141,7 @@ const NewsFeedView = ({ data }) => {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <Badge variant="primary">{item.dealName}</Badge>
+                    {item.isNew && <Badge variant="success">New</Badge>}
                     {item.sourceName && (
                       <span className="text-xs text-gray-500">{item.sourceName}</span>
                     )}

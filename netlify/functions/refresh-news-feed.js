@@ -254,6 +254,8 @@ export const handler = async () => {
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  const runStartedAt = new Date().toISOString();
+
   const { data: deals, error: dealsError } = await supabase
     .from("fund_holdings")
     .select("id, name, sector, company_website, sort_order")
@@ -325,6 +327,10 @@ export const handler = async () => {
 
   const totalStored = perDealCounts.reduce((sum, n) => sum + n, 0);
   const dealsChecked = (deals || []).length;
+
+  await supabase
+    .from("news_feed_refresh_status")
+    .upsert({ id: 1, last_run_at: runStartedAt });
 
   console.log("News feed refresh result:", JSON.stringify({ dealsChecked, totalStored, errors }));
 
