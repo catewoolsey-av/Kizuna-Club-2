@@ -125,9 +125,7 @@ export const handler = async (event) => {
           .filter(Boolean)
       )
     );
-    const bccRecipients = recipients.includes(DEFAULT_CC_EMAIL)
-      ? []
-      : [{ email: DEFAULT_CC_EMAIL }];
+    const needsOwnCopy = !recipients.includes(DEFAULT_CC_EMAIL);
 
     if (recipients.length === 0) {
       return jsonResponse(200, { skipped: true, reason: "No recipients" });
@@ -135,11 +133,10 @@ export const handler = async (event) => {
 
     const subject = subjectOverride || getSubject(type, title);
     const emailPayload = {
-      personalizations: recipients.map((email) => ({
-        to: [{ email }],
-        ...(bccRecipients.length > 0 ? { bcc: bccRecipients } : {}),
-        subject,
-      })),
+      personalizations: [
+        ...recipients.map((email) => ({ to: [{ email }], subject })),
+        ...(needsOwnCopy ? [{ to: [{ email: DEFAULT_CC_EMAIL }], subject }] : []),
+      ],
       from: { email: fromEmail, name: fromName },
       content: [
         {
