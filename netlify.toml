@@ -3,7 +3,9 @@
   publish = "dist"
 
 [functions."refresh-news-feed"]
-  schedule = "@daily"
+  # 15:00 UTC = 11:00am ET during EDT (UTC-4). Shift to "0 16 * * *" (11:00am EST, UTC-5)
+  # once daylight saving ends in November, and back to "0 15 * * *" when it resumes in March.
+  schedule = "0 15 * * *"
 
 [[headers]]
   for = "/*"
